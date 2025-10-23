@@ -37,8 +37,14 @@ public class RitrackController {
         TenantEntity tenant = tenantRepository.findById(request.getTenantId())
                 .orElseThrow(() -> new ResourceNotFoundException("Tenant no encontrado"));
 
+        // Verificar que el tenant tiene configuración de Riders Management
+        if (tenant.getRidersConfig() == null) {
+            throw new IllegalStateException("El tenant '" + tenant.getName() +
+                "' no tiene configuración de Riders Management");
+        }
+
         // Si rider_limit es null = ilimitado
-        if (tenant.getRiderLimit() == null) {
+        if (tenant.getRidersConfig().getRiderLimit() == null) {
             return ResponseEntity.ok(new ValidateRiderLimitResponse(
                     true,
                     request.getCurrentRiderCount(),
@@ -48,31 +54,33 @@ public class RitrackController {
             ));
         }
 
+        Integer riderLimit = tenant.getRidersConfig().getRiderLimit();
+
         // Verificar si está dentro del límite
-        boolean withinLimit = request.getCurrentRiderCount() <= tenant.getRiderLimit();
-        long remaining = tenant.getRiderLimit() - request.getCurrentRiderCount();
+        boolean withinLimit = request.getCurrentRiderCount() <= riderLimit;
+        long remaining = riderLimit - request.getCurrentRiderCount();
 
         if (!withinLimit) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN)
                     .body(new ValidateRiderLimitResponse(
                             false,
                             request.getCurrentRiderCount(),
-                            tenant.getRiderLimit(),
+                            riderLimit,
                             remaining,
-                            "Límite de riders excedido. Máximo permitido: " + tenant.getRiderLimit()
+                            "Límite de riders excedido. Máximo permitido: " + riderLimit
                     ));
         }
 
         // Advertencia si está cerca del límite (>90%)
         String message = "OK";
-        if (remaining < tenant.getRiderLimit() * 0.1) {
+        if (remaining < riderLimit * 0.1) {
             message = "Advertencia: Cerca del límite. Solo quedan " + remaining + " riders disponibles";
         }
 
         return ResponseEntity.ok(new ValidateRiderLimitResponse(
                 true,
                 request.getCurrentRiderCount(),
-                tenant.getRiderLimit(),
+                riderLimit,
                 remaining,
                 message
         ));
@@ -87,13 +95,19 @@ public class RitrackController {
         TenantEntity tenant = tenantRepository.findById(tenantId)
                 .orElseThrow(() -> new ResourceNotFoundException("Tenant no encontrado"));
 
+        // Obtener riderLimit si existe configuración de Riders
+        Integer riderLimit = null;
+        if (tenant.getRidersConfig() != null) {
+            riderLimit = tenant.getRidersConfig().getRiderLimit();
+        }
+
         return ResponseEntity.ok(new TenantInfoResponse(
                 tenant.getId(),
                 tenant.getName(),
                 tenant.getOrganization().getName(),
                 tenant.getApp().getName(),
                 tenant.getAccountLimit(),
-                tenant.getRiderLimit(),
+                riderLimit,
                 tenant.getIsActive()
         ));
     }

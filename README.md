@@ -30,11 +30,12 @@ La aplicación estará en: `http://localhost:8081`
 
 ### Tablas Principales
 
-- **`organizations`** - Empresas clientes (Arendel, Entregalia, etc.)
-- **`apps`** - Tipos de servicios (Riders Management, Warehouse, etc.)
+- **`organizations`** - Empresas clientes (Arendel, Entregalia, etc.) + HARGOS_SYSTEM (organización interna)
+- **`apps`** - Tipos de servicios (Riders Management, Warehouse, etc.) + SYSTEM (app interna)
 - **`tenants`** - Instancias de servicios para organizaciones
   - `account_limit`: Límite de cuentas de usuario
   - `rider_limit`: Límite de riders (NULL = ilimitado) - validado por el droplet
+  - **Tenant especial GLOBAL**: Para superadministradores del sistema
 - **`users`** - Usuarios del sistema
 - **`user_tenant_roles`** - Roles de usuarios por tenant (SUPER_ADMIN, TENANT_ADMIN, USER)
 - **`refresh_tokens`** - Tokens JWT de refresh
@@ -42,7 +43,12 @@ La aplicación estará en: `http://localhost:8081`
 ### Jerarquía
 
 ```
-Organization (Arendel)
+Organization (HARGOS_SYSTEM) - Sistema Interno
+  └── Tenant (GLOBAL)
+      └── Users
+          └── SUPER_ADMIN (admin@hargos.es)
+
+Organization (Arendel) - Cliente
   └── Tenant (Riders Management para Arendel)
       ├── account_limit: 100 cuentas
       ├── rider_limit: 500 riders
@@ -59,6 +65,8 @@ Organization (Arendel)
 - Acceso total al sistema
 - Endpoints: `/api/admin/**`
 - Puede crear organizaciones, tenants y usuarios
+- **Asignado al tenant GLOBAL** (organización HARGOS_SYSTEM)
+- No necesita asignación individual a cada tenant para gestionarlos
 
 ### TENANT_ADMIN
 - Gestiona usuarios de SUS tenants únicamente
