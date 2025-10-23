@@ -19,8 +19,11 @@ public class TenantResponse {
     private String description;
     private Integer accountLimit;
     private Long currentAccountCount;
-    private Integer riderLimit;
-    private Long currentRiderCount;
     private Boolean isActive;
     private LocalDateTime createdAt;
+
+    // Configuraciones específicas por app (solo una estará presente según el app)
+    private RidersConfigDTO ridersConfig;
+    private WarehouseConfigDTO warehouseConfig;
+    private FleetConfigDTO fleetConfig;
 }

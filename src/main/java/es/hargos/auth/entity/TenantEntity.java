@@ -38,9 +38,6 @@ public class TenantEntity {
     @Column(name = "account_limit", nullable = false)
     private Integer accountLimit = 1; // Minimum 1 (includes the TENANT_ADMIN)
 
-    @Column(name = "rider_limit")
-    private Integer riderLimit; // Maximum number of riders allowed (null = unlimited)
-
     @Column(name = "is_active")
     private Boolean isActive = true;
 
@@ -52,6 +49,15 @@ public class TenantEntity {
 
     @OneToMany(mappedBy = "tenant", cascade = CascadeType.ALL, orphanRemoval = true)
     private Set<UserTenantRoleEntity> userTenantRoles = new HashSet<>();
+
+    @OneToOne(mappedBy = "tenant", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    private TenantRidersConfigEntity ridersConfig;
+
+    @OneToOne(mappedBy = "tenant", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    private TenantWarehouseConfigEntity warehouseConfig;
+
+    @OneToOne(mappedBy = "tenant", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    private TenantFleetConfigEntity fleetConfig;
 
     @PrePersist
     protected void onCreate() {

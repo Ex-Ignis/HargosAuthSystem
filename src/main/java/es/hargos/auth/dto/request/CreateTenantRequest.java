@@ -22,7 +22,4 @@ public class CreateTenantRequest {
     @NotNull(message = "Limite de cuentas es obligatorio")
     @Min(value = 1, message = "El limite minimo de cuentas es 1")
     private Integer accountLimit;
-
-    @Min(value = 1, message = "El limite minimo de riders es 1")
-    private Integer riderLimit; // null = unlimited
 }
