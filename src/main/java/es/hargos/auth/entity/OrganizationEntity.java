@@ -10,36 +10,21 @@ import java.util.HashSet;
 import java.util.Set;
 
 @Entity
-@Table(name = "tenants", schema = "auth",
-       uniqueConstraints = @UniqueConstraint(columnNames = {"app_id", "organization_id", "name"}))
+@Table(name = "organizations", schema = "auth")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class TenantEntity {
+public class OrganizationEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "app_id", nullable = false)
-    private AppEntity app;
-
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "organization_id", nullable = false)
-    private OrganizationEntity organization;
-
-    @Column(nullable = false)
-    private String name;
+    @Column(unique = true, nullable = false, length = 100)
+    private String name; // e.g., "Arendel"
 
     @Column(columnDefinition = "TEXT")
     private String description;
-
-    @Column(name = "account_limit", nullable = false)
-    private Integer accountLimit = 1; // Minimum 1 (includes the TENANT_ADMIN)
-
-    @Column(name = "rider_limit")
-    private Integer riderLimit; // Maximum number of riders allowed (null = unlimited)
 
     @Column(name = "is_active")
     private Boolean isActive = true;
@@ -50,8 +35,8 @@ public class TenantEntity {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    @OneToMany(mappedBy = "tenant", cascade = CascadeType.ALL, orphanRemoval = true)
-    private Set<UserTenantRoleEntity> userTenantRoles = new HashSet<>();
+    @OneToMany(mappedBy = "organization", cascade = CascadeType.ALL, orphanRemoval = true)
+    private Set<TenantEntity> tenants = new HashSet<>();
 
     @PrePersist
     protected void onCreate() {

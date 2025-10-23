@@ -33,7 +33,7 @@ public class AuthController {
     @PostMapping("/logout")
     public ResponseEntity<MessageResponse> logout(@Valid @RequestBody RefreshTokenRequest request) {
         authService.logout(request.getRefreshToken());
-        return ResponseEntity.ok(new MessageResponse("Logged out successfully"));
+        return ResponseEntity.ok(new MessageResponse("Sesión cerrada correctamente"));
     }
 
     @GetMapping("/validate")

@@ -23,5 +23,12 @@ public interface UserTenantRoleRepository extends JpaRepository<UserTenantRoleEn
            "WHERE utr.user = :user")
     List<UserTenantRoleEntity> findByUserWithTenantAndApp(@Param("user") UserEntity user);
 
+    @Query("SELECT COUNT(utr) FROM UserTenantRoleEntity utr WHERE utr.tenant = :tenant")
+    long countByTenant(@Param("tenant") TenantEntity tenant);
+
+    @Query("SELECT utr FROM UserTenantRoleEntity utr " +
+           "WHERE utr.user = :user AND utr.role = :role")
+    List<UserTenantRoleEntity> findByUserAndRole(@Param("user") UserEntity user, @Param("role") String role);
+
     void deleteByUserAndTenant(UserEntity user, TenantEntity tenant);
 }

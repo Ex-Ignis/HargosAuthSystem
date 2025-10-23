@@ -31,30 +31,51 @@ public class UserService {
 
     @Transactional
     public UserResponse createUser(CreateUserRequest request) {
+        // Check if user already exists
+        UserEntity user;
+        boolean isNewUser = false;
+
         if (userRepository.existsByEmail(request.getEmail())) {
-            throw new DuplicateResourceException("User with email " + request.getEmail() + " already exists");
+            user = userRepository.findByEmail(request.getEmail())
+                    .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado"));
+        } else {
+            user = new UserEntity();
+            user.setEmail(request.getEmail());
+            user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
+            user.setFullName(request.getFullName());
+            user.setIsActive(true);
+            user.setEmailVerified(false);
+            user = userRepository.save(user);
+            isNewUser = true;
         }
 
-        TenantEntity tenant = tenantRepository.findById(request.getTenantId())
-                .orElseThrow(() -> new ResourceNotFoundException("Tenant not found"));
+        // Validate and assign tenants
+        List<UserTenantRoleEntity> userTenantRoles = new java.util.ArrayList<>();
 
-        UserEntity user = new UserEntity();
-        user.setEmail(request.getEmail());
-        user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
-        user.setFullName(request.getFullName());
-        user.setIsActive(true);
-        user.setEmailVerified(false);
+        for (CreateUserRequest.TenantRoleAssignment assignment : request.getTenantRoles()) {
+            TenantEntity tenant = tenantRepository.findById(assignment.getTenantId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Tenant no encontrado con ID: " + assignment.getTenantId()));
 
-        user = userRepository.save(user);
+            // Check if user is already assigned to this tenant
+            if (userTenantRoleRepository.findByUserAndTenant(user, tenant).isPresent()) {
+                throw new DuplicateResourceException("Usuario ya asignado al tenant: " + tenant.getName());
+            }
 
-        UserTenantRoleEntity userTenantRole = new UserTenantRoleEntity();
-        userTenantRole.setUser(user);
-        userTenantRole.setTenant(tenant);
-        userTenantRole.setRole(request.getRole());
+            // Validate account limit
+            long currentCount = userTenantRoleRepository.countByTenant(tenant);
+            if (currentCount >= tenant.getAccountLimit()) {
+                throw new IllegalStateException("Tenant '" + tenant.getName() + "' ha alcanzado el limite de cuentas (" + tenant.getAccountLimit() + ")");
+            }
 
-        userTenantRoleRepository.save(userTenantRole);
+            UserTenantRoleEntity userTenantRole = new UserTenantRoleEntity();
+            userTenantRole.setUser(user);
+            userTenantRole.setTenant(tenant);
+            userTenantRole.setRole(assignment.getRole());
 
-        return mapToUserResponse(user, List.of(userTenantRole));
+            userTenantRoles.add(userTenantRoleRepository.save(userTenantRole));
+        }
+
+        return mapToUserResponse(user, userTenantRoles);
     }
 
     public List<UserResponse> getAllUsers() {
@@ -68,7 +89,7 @@ public class UserService {
 
     public UserResponse getUserById(Long id) {
         UserEntity user = userRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado"));
 
         List<UserTenantRoleEntity> roles = userTenantRoleRepository.findByUserWithTenantAndApp(user);
         return mapToUserResponse(user, roles);
@@ -77,13 +98,19 @@ public class UserService {
     @Transactional
     public UserResponse assignTenant(Long userId, AssignTenantRequest request) {
         UserEntity user = userRepository.findById(userId)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado"));
 
         TenantEntity tenant = tenantRepository.findById(request.getTenantId())
-                .orElseThrow(() -> new ResourceNotFoundException("Tenant not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant no encontrado"));
 
         if (userTenantRoleRepository.findByUserAndTenant(user, tenant).isPresent()) {
-            throw new DuplicateResourceException("User already assigned to this tenant");
+            throw new DuplicateResourceException("Usuario ya asignado a este tenant");
+        }
+
+        // Validate account limit
+        long currentCount = userTenantRoleRepository.countByTenant(tenant);
+        if (currentCount >= tenant.getAccountLimit()) {
+            throw new IllegalStateException("Tenant '" + tenant.getName() + "' ha alcanzado el limite de cuentas (" + tenant.getAccountLimit() + ")");
         }
 
         UserTenantRoleEntity userTenantRole = new UserTenantRoleEntity();
@@ -100,7 +127,7 @@ public class UserService {
     @Transactional
     public void deleteUser(Long userId) {
         UserEntity user = userRepository.findById(userId)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado"));
 
         userRepository.delete(user);
     }
@@ -108,13 +135,45 @@ public class UserService {
     @Transactional
     public UserResponse updateUserStatus(Long userId, boolean isActive) {
         UserEntity user = userRepository.findById(userId)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado"));
 
         user.setIsActive(isActive);
         userRepository.save(user);
 
         List<UserTenantRoleEntity> roles = userTenantRoleRepository.findByUserWithTenantAndApp(user);
         return mapToUserResponse(user, roles);
+    }
+
+    public List<UserResponse> getUsersByTenant(Long tenantId) {
+        TenantEntity tenant = tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant no encontrado"));
+
+        List<UserTenantRoleEntity> userTenantRoles = userTenantRoleRepository.findByTenant(tenant);
+
+        return userTenantRoles.stream()
+                .map(utr -> {
+                    List<UserTenantRoleEntity> allRoles = userTenantRoleRepository.findByUserWithTenantAndApp(utr.getUser());
+                    return mapToUserResponse(utr.getUser(), allRoles);
+                })
+                .distinct()
+                .collect(Collectors.toList());
+    }
+
+    public List<UserResponse> getUsersByTenantAdmin(UserEntity adminUser) {
+        // Get all tenants where this user is TENANT_ADMIN
+        List<UserTenantRoleEntity> adminTenants = userTenantRoleRepository.findByUserAndRole(adminUser, "TENANT_ADMIN");
+
+        return adminTenants.stream()
+                .flatMap(adminTenant -> {
+                    List<UserTenantRoleEntity> tenantUsers = userTenantRoleRepository.findByTenant(adminTenant.getTenant());
+                    return tenantUsers.stream()
+                            .map(utr -> {
+                                List<UserTenantRoleEntity> allRoles = userTenantRoleRepository.findByUserWithTenantAndApp(utr.getUser());
+                                return mapToUserResponse(utr.getUser(), allRoles);
+                            });
+                })
+                .distinct()
+                .collect(Collectors.toList());
     }
 
     private UserResponse mapToUserResponse(UserEntity user, List<UserTenantRoleEntity> userTenantRoles) {

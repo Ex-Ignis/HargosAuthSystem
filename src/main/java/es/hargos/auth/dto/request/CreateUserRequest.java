@@ -1,28 +1,38 @@
 package es.hargos.auth.dto.request;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
+
+import java.util.List;
 
 @Data
 public class CreateUserRequest {
 
-    @NotBlank(message = "Email is required")
-    @Email(message = "Email must be valid")
+    @NotBlank(message = "Email es obligatorio")
+    @Email(message = "Email debe ser valido")
     private String email;
 
-    @NotBlank(message = "Password is required")
-    @Size(min = 6, message = "Password must be at least 6 characters")
+    @NotBlank(message = "Contraseña es obligatorio")
+    @Size(min = 6, message = "Contraseña debe tener un tamaño mínimo de 6")
     private String password;
 
-    @NotBlank(message = "Full name is required")
+    @NotBlank(message = "Nombre Completo es obligatorio")
     private String fullName;
 
-    @NotNull(message = "Tenant ID is required")
-    private Long tenantId;
+    @NotEmpty(message = "Debe asignar al menos un tenant")
+    @Valid
+    private List<TenantRoleAssignment> tenantRoles;
 
-    @NotBlank(message = "Role is required")
-    private String role; // TENANT_ADMIN or USER
+    @Data
+    public static class TenantRoleAssignment {
+        @jakarta.validation.constraints.NotNull(message = "Tenant ID es obligatorio")
+        private Long tenantId;
+
+        @NotBlank(message = "Rol es obligatorio")
+        private String role; // TENANT_ADMIN or USER
+    }
 }

@@ -2,3 +2,4 @@
 *.sql
 *.yml
 application.properties
+*.sh

@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -20,6 +21,7 @@ import java.util.List;
 
 @Configuration
 @EnableWebSecurity
+@EnableMethodSecurity(prePostEnabled = true)
 @RequiredArgsConstructor
 public class SecurityConfig {
 
@@ -44,8 +46,14 @@ public class SecurityConfig {
                         .requestMatchers("/actuator/health").permitAll()
                         .requestMatchers("/actuator/**").authenticated()
 
-                        // Admin endpoints - require authentication
+                        // Droplet endpoints - public (called from external applications)
+                        .requestMatchers("/api/droplet/**").permitAll()
+
+                        // Admin endpoints - require authentication (method-level security with @PreAuthorize)
                         .requestMatchers("/api/admin/**").authenticated()
+
+                        // Tenant Admin endpoints - require authentication
+                        .requestMatchers("/api/tenant-admin/**").authenticated()
 
                         // All other requests require authentication
                         .anyRequest().authenticated()
