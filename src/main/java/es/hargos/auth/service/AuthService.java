@@ -17,8 +17,10 @@ import es.hargos.auth.entity.*;
 import es.hargos.auth.exception.DuplicateResourceException;
 import es.hargos.auth.exception.InvalidCredentialsException;
 import es.hargos.auth.repository.UserRepository;
+import es.hargos.auth.repository.UserSessionRepository;
 import es.hargos.auth.repository.UserTenantRoleRepository;
 import es.hargos.auth.util.JwtUtil;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -36,6 +38,7 @@ public class AuthService {
 
     private final UserRepository userRepository;
     private final UserTenantRoleRepository userTenantRoleRepository;
+    private final UserSessionRepository userSessionRepository;
     private final RefreshTokenService refreshTokenService;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
@@ -76,7 +79,7 @@ public class AuthService {
     }
 
     @Transactional
-    public LoginResponse login(LoginRequest request) {
+    public LoginResponse login(LoginRequest request, HttpServletRequest httpRequest) {
         UserEntity user = userRepository.findByEmail(request.getEmail())
                 .orElseThrow(() -> new InvalidCredentialsException("Usuario o contraseña incorrecto"));
 
@@ -88,10 +91,42 @@ public class AuthService {
             throw new InvalidCredentialsException("Cuenta Suspendida"); // inactive
         }
 
+        // Verificar límite de sesiones activas (2 sesiones máximo)
+        LocalDateTime thirtyMinutesAgo = LocalDateTime.now().minusMinutes(30);
+        long activeSessionCount = userSessionRepository.countActiveSessionsByUser(user, thirtyMinutesAgo);
+
+        // Si ya tiene 2 o más sesiones activas, revocar la más antigua
+        if (activeSessionCount >= 2) {
+            UserSessionEntity oldestSession = userSessionRepository
+                    .findFirstByUserAndIsRevokedOrderByCreatedAtAsc(user, false)
+                    .orElse(null);
+
+            if (oldestSession != null) {
+                oldestSession.setIsRevoked(true);
+                userSessionRepository.save(oldestSession);
+
+                // También revocar el refresh token asociado
+                if (oldestSession.getRefreshToken() != null) {
+                    refreshTokenService.revokeToken(oldestSession.getRefreshToken());
+                }
+            }
+        }
+
         List<UserTenantRoleEntity> userTenantRoles = userTenantRoleRepository.findByUserWithTenantAndApp(user);
         String accessToken = jwtUtil.generateAccessToken(user, userTenantRoles);
 
         RefreshTokenEntity refreshToken = refreshTokenService.createRefreshToken(user);
+
+        // Crear nueva sesión
+        UserSessionEntity session = new UserSessionEntity();
+        session.setUser(user);
+        session.setRefreshToken(refreshToken);
+        session.setIpAddress(getClientIp(httpRequest));
+        session.setUserAgent(httpRequest.getHeader("User-Agent"));
+        session.setDeviceType(UserSessionEntity.detectDeviceType(httpRequest.getHeader("User-Agent")));
+        session.setLastActivityAt(LocalDateTime.now());
+        session.setIsRevoked(false);
+        userSessionRepository.save(session);
 
         UserResponse userResponse = mapToUserResponse(user, userTenantRoles);
 
@@ -111,6 +146,14 @@ public class AuthService {
             throw new InvalidCredentialsException("Refresh Token no valido o expirado");
         }
 
+        // Actualizar actividad de la sesión
+        userSessionRepository.findByRefreshToken(refreshToken).ifPresent(session -> {
+            if (!session.getIsRevoked()) {
+                session.updateActivity();
+                userSessionRepository.save(session);
+            }
+        });
+
         UserEntity user = refreshToken.getUser();
         List<UserTenantRoleEntity> userTenantRoles = userTenantRoleRepository.findByUserWithTenantAndApp(user);
 
@@ -128,6 +171,13 @@ public class AuthService {
     @Transactional
     public void logout(String refreshToken) {
         RefreshTokenEntity token = refreshTokenService.findByToken(refreshToken);
+
+        // Revocar la sesión asociada
+        userSessionRepository.findByRefreshToken(token).ifPresent(session -> {
+            session.setIsRevoked(true);
+            userSessionRepository.save(session);
+        });
+
         refreshTokenService.revokeToken(token);
     }
 
@@ -309,5 +359,24 @@ public class AuthService {
         user.setPasswordResetExpiresAt(null);
 
         userRepository.save(user);
+    }
+
+    /**
+     * Obtiene la IP del cliente desde el request
+     * Considera proxies y load balancers
+     */
+    private String getClientIp(HttpServletRequest request) {
+        String ip = request.getHeader("X-Forwarded-For");
+        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getHeader("X-Real-IP");
+        }
+        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getRemoteAddr();
+        }
+        // Si hay múltiples IPs (proxy chain), tomar la primera
+        if (ip != null && ip.contains(",")) {
+            ip = ip.split(",")[0].trim();
+        }
+        return ip;
     }
 }

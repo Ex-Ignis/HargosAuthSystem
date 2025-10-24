@@ -52,6 +52,9 @@ public class SecurityConfig {
                         // Purchase endpoints - require authentication (user must be logged in to purchase)
                         .requestMatchers("/api/purchase/**").authenticated()
 
+                        // Session management endpoints - require authentication
+                        .requestMatchers("/api/sessions/**").authenticated()
+
                         // Admin endpoints - require authentication (method-level security with @PreAuthorize)
                         .requestMatchers("/api/admin/**").authenticated()
 

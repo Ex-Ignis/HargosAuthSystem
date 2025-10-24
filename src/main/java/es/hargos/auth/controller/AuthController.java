@@ -12,6 +12,7 @@ import es.hargos.auth.dto.response.MessageResponse;
 import es.hargos.auth.dto.response.TokenValidationResponse;
 import es.hargos.auth.dto.response.UserResponse;
 import es.hargos.auth.service.AuthService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -53,8 +54,8 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
-        LoginResponse response = authService.login(request);
+    public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest request, HttpServletRequest httpRequest) {
+        LoginResponse response = authService.login(request, httpRequest);
         return ResponseEntity.ok(response);
     }
 
