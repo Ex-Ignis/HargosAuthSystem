@@ -1,10 +1,12 @@
 package es.hargos.auth.controller;
 
 import es.hargos.auth.dto.request.AssignTenantRequest;
+import es.hargos.auth.dto.request.CreateAccessCodeRequest;
+import es.hargos.auth.dto.request.CreateInvitationRequest;
 import es.hargos.auth.dto.request.CreateUserRequest;
-import es.hargos.auth.dto.response.MessageResponse;
-import es.hargos.auth.dto.response.TenantResponse;
-import es.hargos.auth.dto.response.UserResponse;
+import es.hargos.auth.dto.response.*;
+import es.hargos.auth.service.AccessCodeService;
+import es.hargos.auth.service.InvitationService;
 import es.hargos.auth.entity.UserEntity;
 import es.hargos.auth.entity.UserTenantRoleEntity;
 import es.hargos.auth.exception.ForbiddenException;
@@ -34,8 +36,11 @@ public class TenantAdminController {
     private final TenantService tenantService;
     private final UserRepository userRepository;
     private final UserTenantRoleRepository userTenantRoleRepository;
+    private final InvitationService invitationService;
+    private final AccessCodeService accessCodeService;
 
     // ==================== USER MANAGEMENT ====================
+
     @PostMapping("/users")
     public ResponseEntity<UserResponse> createUser(
             @Valid @RequestBody CreateUserRequest request,
@@ -204,5 +209,138 @@ public class TenantAdminController {
         if (!hasAccess) {
             throw new ForbiddenException("No tienes permiso para gestionar este usuario");
         }
+    }
+
+    // ==================== INVITATIONS MANAGEMENT ====================
+
+    /**
+     * Crear invitación por email para unirse a un tenant
+     */
+    @PostMapping("/invitations")
+    public ResponseEntity<InvitationResponse> createInvitation(
+            @Valid @RequestBody CreateInvitationRequest request,
+            Authentication authentication) {
+
+        UserEntity currentUser = getUserFromAuthentication(authentication);
+        validateTenantAdminAccess(currentUser, List.of(request.getTenantId()));
+
+        InvitationResponse response = invitationService.createInvitation(request, currentUser.getId());
+        return new ResponseEntity<>(response, HttpStatus.CREATED);
+    }
+
+    /**
+     * Listar invitaciones de un tenant
+     */
+    @GetMapping("/tenants/{tenantId}/invitations")
+    public ResponseEntity<List<InvitationResponse>> getInvitationsByTenant(
+            @PathVariable Long tenantId,
+            Authentication authentication) {
+
+        UserEntity currentUser = getUserFromAuthentication(authentication);
+        validateTenantAdminAccess(currentUser, List.of(tenantId));
+
+        List<InvitationResponse> invitations = invitationService.getInvitationsByTenant(tenantId);
+        return ResponseEntity.ok(invitations);
+    }
+
+    /**
+     * Listar invitaciones pendientes de un tenant
+     */
+    @GetMapping("/tenants/{tenantId}/invitations/pending")
+    public ResponseEntity<List<InvitationResponse>> getPendingInvitationsByTenant(
+            @PathVariable Long tenantId,
+            Authentication authentication) {
+
+        UserEntity currentUser = getUserFromAuthentication(authentication);
+        validateTenantAdminAccess(currentUser, List.of(tenantId));
+
+        List<InvitationResponse> invitations = invitationService.getPendingInvitationsByTenant(tenantId);
+        return ResponseEntity.ok(invitations);
+    }
+
+    /**
+     * Eliminar invitación
+     */
+    @DeleteMapping("/invitations/{invitationId}")
+    public ResponseEntity<MessageResponse> deleteInvitation(
+            @PathVariable Long invitationId,
+            Authentication authentication) {
+
+        // TODO: Validar que el admin gestiona el tenant de la invitación
+        invitationService.deleteInvitation(invitationId);
+        return ResponseEntity.ok(new MessageResponse("Invitación eliminada exitosamente"));
+    }
+
+    // ==================== ACCESS CODES MANAGEMENT ====================
+
+    /**
+     * Generar código de acceso para un tenant
+     */
+    @PostMapping("/access-codes")
+    public ResponseEntity<AccessCodeResponse> createAccessCode(
+            @Valid @RequestBody CreateAccessCodeRequest request,
+            Authentication authentication) {
+
+        UserEntity currentUser = getUserFromAuthentication(authentication);
+        validateTenantAdminAccess(currentUser, List.of(request.getTenantId()));
+
+        AccessCodeResponse response = accessCodeService.createAccessCode(request, currentUser.getId());
+        return new ResponseEntity<>(response, HttpStatus.CREATED);
+    }
+
+    /**
+     * Listar códigos de acceso de un tenant
+     */
+    @GetMapping("/tenants/{tenantId}/access-codes")
+    public ResponseEntity<List<AccessCodeResponse>> getAccessCodesByTenant(
+            @PathVariable Long tenantId,
+            Authentication authentication) {
+
+        UserEntity currentUser = getUserFromAuthentication(authentication);
+        validateTenantAdminAccess(currentUser, List.of(tenantId));
+
+        List<AccessCodeResponse> accessCodes = accessCodeService.getAccessCodesByTenant(tenantId);
+        return ResponseEntity.ok(accessCodes);
+    }
+
+    /**
+     * Listar códigos de acceso activos de un tenant
+     */
+    @GetMapping("/tenants/{tenantId}/access-codes/active")
+    public ResponseEntity<List<AccessCodeResponse>> getActiveAccessCodesByTenant(
+            @PathVariable Long tenantId,
+            Authentication authentication) {
+
+        UserEntity currentUser = getUserFromAuthentication(authentication);
+        validateTenantAdminAccess(currentUser, List.of(tenantId));
+
+        List<AccessCodeResponse> accessCodes = accessCodeService.getActiveAccessCodesByTenant(tenantId);
+        return ResponseEntity.ok(accessCodes);
+    }
+
+    /**
+     * Desactivar código de acceso
+     */
+    @PutMapping("/access-codes/{accessCodeId}/deactivate")
+    public ResponseEntity<MessageResponse> deactivateAccessCode(
+            @PathVariable Long accessCodeId,
+            Authentication authentication) {
+
+        // TODO: Validar que el admin gestiona el tenant del código
+        accessCodeService.deactivateAccessCode(accessCodeId);
+        return ResponseEntity.ok(new MessageResponse("Código de acceso desactivado exitosamente"));
+    }
+
+    /**
+     * Eliminar código de acceso
+     */
+    @DeleteMapping("/access-codes/{accessCodeId}")
+    public ResponseEntity<MessageResponse> deleteAccessCode(
+            @PathVariable Long accessCodeId,
+            Authentication authentication) {
+
+        // TODO: Validar que el admin gestiona el tenant del código
+        accessCodeService.deleteAccessCode(accessCodeId);
+        return ResponseEntity.ok(new MessageResponse("Código de acceso eliminado exitosamente"));
     }
 }

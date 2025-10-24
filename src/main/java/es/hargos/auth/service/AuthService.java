@@ -1,16 +1,19 @@
 package es.hargos.auth.service;
 
 import com.nimbusds.jwt.JWTClaimsSet;
+import es.hargos.auth.dto.request.AcceptInvitationRequest;
+import es.hargos.auth.dto.request.ForgotPasswordRequest;
 import es.hargos.auth.dto.request.LoginRequest;
 import es.hargos.auth.dto.request.RefreshTokenRequest;
 import es.hargos.auth.dto.request.RegisterRequest;
+import es.hargos.auth.dto.request.RegisterWithAccessCodeRequest;
+import es.hargos.auth.dto.request.ResetPasswordRequest;
 import es.hargos.auth.dto.response.LoginResponse;
 import es.hargos.auth.dto.response.TenantRoleResponse;
 import es.hargos.auth.dto.response.TokenValidationResponse;
 import es.hargos.auth.dto.response.UserResponse;
-import es.hargos.auth.entity.RefreshTokenEntity;
-import es.hargos.auth.entity.UserEntity;
-import es.hargos.auth.entity.UserTenantRoleEntity;
+import java.util.ArrayList;
+import es.hargos.auth.entity.*;
 import es.hargos.auth.exception.DuplicateResourceException;
 import es.hargos.auth.exception.InvalidCredentialsException;
 import es.hargos.auth.repository.UserRepository;
@@ -22,7 +25,9 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -34,9 +39,41 @@ public class AuthService {
     private final RefreshTokenService refreshTokenService;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
+    private final InvitationService invitationService;
+    private final AccessCodeService accessCodeService;
+    private final EmailService emailService;
 
     @Value("${jwt.access-token-expiration-ms}")
     private Long accessTokenExpiration;
+
+    @Transactional
+    public UserResponse register(RegisterRequest request) {
+        // Verificar si el usuario ya existe
+        if (userRepository.existsByEmail(request.getEmail())) {
+            throw new DuplicateResourceException("El email ya está registrado");
+        }
+
+        // Crear usuario SIN asignación a ningún tenant
+        UserEntity user = new UserEntity();
+        user.setEmail(request.getEmail());
+        user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
+        user.setFullName(request.getFullName());
+        user.setIsActive(true);
+        user.setEmailVerified(false); // Requiere verificación por email
+
+        user = userRepository.save(user);
+
+        // Devolver usuario sin tenants (lista vacía)
+        return new UserResponse(
+                user.getId(),
+                user.getEmail(),
+                user.getFullName(),
+                user.getIsActive(),
+                user.getEmailVerified(),
+                new ArrayList<>(), // Sin tenants asignados
+                user.getCreatedAt()
+        );
+    }
 
     @Transactional
     public LoginResponse login(LoginRequest request) {
@@ -139,5 +176,138 @@ public class AuthService {
                 tenants,
                 user.getCreatedAt()
         );
+    }
+
+    /**
+     * Registrarse aceptando una invitación por email
+     */
+    @Transactional
+    public UserResponse registerFromInvitation(AcceptInvitationRequest request) {
+        // Obtener y validar invitación
+        InvitationEntity invitation = invitationService.getInvitationByToken(request.getToken());
+
+        if (!invitation.isValid()) {
+            throw new InvalidCredentialsException("La invitación ha expirado o ya fue usada");
+        }
+
+        // Verificar si el usuario ya existe
+        if (userRepository.existsByEmail(invitation.getEmail())) {
+            throw new DuplicateResourceException("El email ya está registrado");
+        }
+
+        // Crear usuario
+        UserEntity user = new UserEntity();
+        user.setEmail(invitation.getEmail());
+        user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
+        user.setFullName(request.getFullName());
+        user.setIsActive(true);
+        user.setEmailVerified(true); // Email verificado por invitación
+
+        user = userRepository.save(user);
+
+        // Asignar al tenant con el rol de la invitación
+        UserTenantRoleEntity userTenantRole = new UserTenantRoleEntity();
+        userTenantRole.setUser(user);
+        userTenantRole.setTenant(invitation.getTenant());
+        userTenantRole.setRole(invitation.getRole());
+        userTenantRoleRepository.save(userTenantRole);
+
+        // Marcar invitación como aceptada
+        invitationService.markAsAccepted(invitation);
+
+        // Devolver usuario
+        List<UserTenantRoleEntity> roles = userTenantRoleRepository.findByUserWithTenantAndApp(user);
+        return mapToUserResponse(user, roles);
+    }
+
+    /**
+     * Registrarse usando un código de acceso
+     */
+    @Transactional
+    public UserResponse registerWithAccessCode(RegisterWithAccessCodeRequest request) {
+        // Obtener y validar código de acceso
+        AccessCodeEntity accessCode = accessCodeService.getAccessCodeByCode(request.getAccessCode());
+
+        if (!accessCode.isValid()) {
+            throw new InvalidCredentialsException("El código de acceso es inválido, ha expirado o alcanzó el límite de usos");
+        }
+
+        // Verificar si el usuario ya existe
+        if (userRepository.existsByEmail(request.getEmail())) {
+            throw new DuplicateResourceException("El email ya está registrado");
+        }
+
+        // Crear usuario
+        UserEntity user = new UserEntity();
+        user.setEmail(request.getEmail());
+        user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
+        user.setFullName(request.getFullName());
+        user.setIsActive(true);
+        user.setEmailVerified(false); // Email NO verificado con código de acceso
+
+        user = userRepository.save(user);
+
+        // Asignar al tenant con el rol del código
+        UserTenantRoleEntity userTenantRole = new UserTenantRoleEntity();
+        userTenantRole.setUser(user);
+        userTenantRole.setTenant(accessCode.getTenant());
+        userTenantRole.setRole(accessCode.getRole());
+        userTenantRoleRepository.save(userTenantRole);
+
+        // Incrementar usos del código
+        accessCodeService.incrementUses(accessCode);
+
+        // Devolver usuario
+        List<UserTenantRoleEntity> roles = userTenantRoleRepository.findByUserWithTenantAndApp(user);
+        return mapToUserResponse(user, roles);
+    }
+
+    /**
+     * Solicitar recuperación de contraseña
+     */
+    @Transactional
+    public void forgotPassword(ForgotPasswordRequest request) {
+        // Buscar usuario por email
+        UserEntity user = userRepository.findByEmail(request.getEmail())
+                .orElseThrow(() -> new InvalidCredentialsException("No se encontró un usuario con ese email"));
+
+        // Generar token único
+        String token = UUID.randomUUID().toString();
+
+        // Establecer expiración en 1 hora
+        LocalDateTime expiresAt = LocalDateTime.now().plusHours(1);
+
+        // Guardar token y expiración en el usuario
+        user.setPasswordResetToken(token);
+        user.setPasswordResetExpiresAt(expiresAt);
+        userRepository.save(user);
+
+        // Enviar email de recuperación
+        emailService.sendPasswordResetEmail(user.getEmail(), user.getFullName(), token);
+    }
+
+    /**
+     * Restablecer contraseña usando token
+     */
+    @Transactional
+    public void resetPassword(ResetPasswordRequest request) {
+        // Buscar usuario por token
+        UserEntity user = userRepository.findByPasswordResetToken(request.getToken())
+                .orElseThrow(() -> new InvalidCredentialsException("Token de recuperación inválido o expirado"));
+
+        // Verificar que el token no ha expirado
+        if (user.getPasswordResetExpiresAt() == null ||
+            user.getPasswordResetExpiresAt().isBefore(LocalDateTime.now())) {
+            throw new InvalidCredentialsException("El token de recuperación ha expirado");
+        }
+
+        // Actualizar contraseña
+        user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
+
+        // Limpiar token de recuperación
+        user.setPasswordResetToken(null);
+        user.setPasswordResetExpiresAt(null);
+
+        userRepository.save(user);
     }
 }

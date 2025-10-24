@@ -46,8 +46,11 @@ public class SecurityConfig {
                         .requestMatchers("/actuator/health").permitAll()
                         .requestMatchers("/actuator/**").authenticated()
 
-                        // Droplet endpoints - public (called from external applications)
-                        .requestMatchers("/api/droplet/**").permitAll()
+                        // Ritrack endpoints - public (called from external applications)
+                        .requestMatchers("/api/ritrack/**").permitAll()
+
+                        // Purchase endpoints - require authentication (user must be logged in to purchase)
+                        .requestMatchers("/api/purchase/**").authenticated()
 
                         // Admin endpoints - require authentication (method-level security with @PreAuthorize)
                         .requestMatchers("/api/admin/**").authenticated()

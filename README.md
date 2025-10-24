@@ -418,11 +418,224 @@ curl -X GET http://localhost:8081/api/admin/users \
 
 ---
 
+## 📝 Flujos Completos de Usuario
+
+### 1️⃣ Flujo de Registro y Compra (Cliente)
+
+**Paso 1: Registro sin tenant**
+```bash
+curl -X POST http://localhost:8081/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "cliente@empresa.com",
+    "password": "MiPassword123!",
+    "fullName": "Juan Pérez"
+  }'
+```
+
+**Respuesta:**
+```json
+{
+  "id": 10,
+  "email": "cliente@empresa.com",
+  "fullName": "Juan Pérez",
+  "isActive": true,
+  "emailVerified": false,
+  "tenants": [],  // Sin tenants asignados
+  "createdAt": "2025-01-15T10:30:00"
+}
+```
+
+**Paso 2: Login**
+```bash
+curl -X POST http://localhost:8081/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "cliente@empresa.com",
+    "password": "MiPassword123!"
+  }'
+```
+
+**Paso 3: Comprar un producto (crea organización + tenant)**
+```bash
+curl -X POST http://localhost:8081/api/purchase \
+  -H "Authorization: Bearer {token}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "organizationName": "Mi Empresa SL",
+    "organizationDescription": "Empresa de logística",
+    "appId": 2,
+    "tenantName": "Riders Mi Empresa",
+    "tenantDescription": "Servicio de gestión de riders",
+    "accountLimit": 50,
+    "ridersConfig": {
+      "riderLimit": 200,
+      "deliveryZones": 5,
+      "maxDailyDeliveries": 500,
+      "realTimeTracking": true,
+      "smsNotifications": true
+    }
+  }'
+```
+
+**Resultado:**
+- ✅ Se crea la organización "Mi Empresa SL"
+- ✅ Se crea el tenant "Riders Mi Empresa"
+- ✅ El usuario se convierte en TENANT_ADMIN del tenant
+- ✅ Ahora puede gestionar usuarios de su tenant
+
+---
+
+### 2️⃣ Flujo de Empleado Creado por Admin
+
+**Opción A: TENANT_ADMIN crea el empleado directamente**
+```bash
+curl -X POST http://localhost:8081/api/tenant-admin/users \
+  -H "Authorization: Bearer {admin_token}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "empleado@empresa.com",
+    "password": "EmpleadoPass123!",
+    "fullName": "María García",
+    "tenantRoles": [
+      {
+        "tenantId": 1,
+        "role": "USER"
+      }
+    ]
+  }'
+```
+
+---
+
+### 3️⃣ Flujo de Empleado que se Registra Solo
+
+**Paso 1: Empleado se registra**
+```bash
+curl -X POST http://localhost:8081/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "empleado2@empresa.com",
+    "password": "Password123!",
+    "fullName": "Carlos López"
+  }'
+```
+
+**Paso 2: TENANT_ADMIN busca usuarios disponibles**
+```bash
+curl -X GET http://localhost:8081/api/tenant-admin/available-users \
+  -H "Authorization: Bearer {admin_token}"
+```
+
+**Respuesta:**
+```json
+[
+  {
+    "id": 15,
+    "email": "empleado2@empresa.com",
+    "fullName": "Carlos López",
+    "isActive": true,
+    "emailVerified": false,
+    "tenants": [],  // Sin tenant
+    "createdAt": "2025-01-15T11:00:00"
+  }
+]
+```
+
+**Paso 3: TENANT_ADMIN asigna el empleado a su tenant**
+```bash
+curl -X POST http://localhost:8081/api/tenant-admin/users/15/tenants \
+  -H "Authorization: Bearer {admin_token}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tenantId": 1,
+    "role": "USER"
+  }'
+```
+
+---
+
+### 4️⃣ Compra de Múltiples Productos
+
+Un cliente puede comprar diferentes productos para su organización:
+
+**Comprar Warehouse Management**
+```bash
+curl -X POST http://localhost:8081/api/purchase \
+  -H "Authorization: Bearer {token}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "organizationName": "Mi Empresa SL",
+    "appId": 3,
+    "tenantName": "Warehouse Mi Empresa",
+    "accountLimit": 30,
+    "warehouseConfig": {
+      "warehouseCapacityM3": 5000.00,
+      "loadingDocks": 8,
+      "inventorySkuLimit": 10000,
+      "barcodeScanning": true,
+      "rfidEnabled": true,
+      "temperatureControlledZones": 3
+    }
+  }'
+```
+
+**Comprar Fleet Management**
+```bash
+curl -X POST http://localhost:8081/api/purchase \
+  -H "Authorization: Bearer {token}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "organizationName": "Mi Empresa SL",
+    "appId": 4,
+    "tenantName": "Fleet Mi Empresa",
+    "accountLimit": 20,
+    "fleetConfig": {
+      "vehicleLimit": 50,
+      "gpsTracking": true,
+      "maintenanceAlerts": true,
+      "fuelMonitoring": true,
+      "driverScoring": true,
+      "telematicsEnabled": false
+    }
+  }'
+```
+
+---
+
+## 🔄 Endpoints Nuevos
+
+### Registro y Compra
+
+```http
+# Registro público (sin tenant)
+POST   /api/auth/register
+
+# Compra de producto (requiere autenticación)
+POST   /api/purchase
+```
+
+### Gestión de Empleados (TENANT_ADMIN)
+
+```http
+# Ver usuarios disponibles para asignar (sin tenant)
+GET    /api/tenant-admin/available-users
+
+# Asignar usuario existente a un tenant
+POST   /api/tenant-admin/users/{id}/tenants
+```
+
+---
+
 ## 🚧 TODOs Futuros
 
-- [ ] Implementar API keys para endpoints del droplet
+- [ ] Sistema de invitaciones por email con tokens
+- [ ] Verificación de email
+- [ ] Recuperación de contraseña
+- [ ] Implementar API keys para endpoints de ritrack
 - [ ] Rate limiting por tenant
 - [ ] Sistema de auditoría/logging
 - [ ] Alertas cuando se esté cerca del límite
 - [ ] Dashboard para TENANT_ADMIN
 - [ ] Sistema de upgrades de planes
+- [ ] Pasarela de pago para compras

@@ -176,6 +176,22 @@ public class UserService {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Obtiene usuarios que NO están asignados a ningún tenant.
+     * Útil para que TENANT_ADMIN pueda buscar y asignar empleados.
+     */
+    public List<UserResponse> getUsersWithoutTenant() {
+        List<UserEntity> allUsers = userRepository.findAll();
+
+        return allUsers.stream()
+                .filter(user -> {
+                    List<UserTenantRoleEntity> roles = userTenantRoleRepository.findByUser(user);
+                    return roles.isEmpty(); // Solo usuarios sin tenant asignado
+                })
+                .map(user -> mapToUserResponse(user, new java.util.ArrayList<>()))
+                .collect(Collectors.toList());
+    }
+
     private UserResponse mapToUserResponse(UserEntity user, List<UserTenantRoleEntity> userTenantRoles) {
         List<TenantRoleResponse> tenants = userTenantRoles.stream()
                 .map(utr -> new TenantRoleResponse(
