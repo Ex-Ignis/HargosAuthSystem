@@ -1,6 +1,6 @@
 package es.hargos.auth.service;
 
-import es.hargos.auth.dto.request.CreateTenantRequest;
+import es.hargos.auth.dto.request.*;
 import es.hargos.auth.dto.response.*;
 import es.hargos.auth.entity.*;
 import es.hargos.auth.exception.DuplicateResourceException;
@@ -136,5 +136,162 @@ public class TenantService {
         }
 
         return response;
+    }
+
+    /**
+     * Actualiza la información básica de un tenant (name, description, accountLimit)
+     */
+    @Transactional
+    public TenantResponse updateTenant(Long id, UpdateTenantRequest request) {
+        TenantEntity tenant = tenantRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant no encontrado"));
+
+        // Actualizar campos si se proporcionan
+        if (request.getName() != null && !request.getName().trim().isEmpty()) {
+            tenant.setName(request.getName());
+        }
+
+        if (request.getDescription() != null) {
+            tenant.setDescription(request.getDescription());
+        }
+
+        if (request.getAccountLimit() != null) {
+            tenant.setAccountLimit(request.getAccountLimit());
+        }
+
+        tenant = tenantRepository.save(tenant);
+        return mapToResponse(tenant);
+    }
+
+    /**
+     * Actualiza la configuración de Riders Management de un tenant
+     */
+    @Transactional
+    public TenantResponse updateRidersConfig(Long tenantId, UpdateRidersConfigRequest request) {
+        TenantEntity tenant = tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant no encontrado"));
+
+        // Verificar que el tenant sea de tipo Riders Management
+        if (!"Riders Management".equals(tenant.getApp().getName())) {
+            throw new IllegalStateException("El tenant no es de tipo Riders Management");
+        }
+
+        // Buscar o crear configuración
+        TenantRidersConfigEntity config = tenantRidersConfigRepository.findByTenantId(tenantId)
+                .orElseGet(() -> {
+                    TenantRidersConfigEntity newConfig = new TenantRidersConfigEntity();
+                    newConfig.setTenant(tenant);
+                    return newConfig;
+                });
+
+        // Actualizar campos si se proporcionan
+        if (request.getRiderLimit() != null) {
+            config.setRiderLimit(request.getRiderLimit());
+        }
+        if (request.getDeliveryZones() != null) {
+            config.setDeliveryZones(request.getDeliveryZones());
+        }
+        if (request.getMaxDailyDeliveries() != null) {
+            config.setMaxDailyDeliveries(request.getMaxDailyDeliveries());
+        }
+        if (request.getRealTimeTracking() != null) {
+            config.setRealTimeTracking(request.getRealTimeTracking());
+        }
+        if (request.getSmsNotifications() != null) {
+            config.setSmsNotifications(request.getSmsNotifications());
+        }
+
+        tenantRidersConfigRepository.save(config);
+        return mapToResponse(tenant);
+    }
+
+    /**
+     * Actualiza la configuración de Warehouse Management de un tenant
+     */
+    @Transactional
+    public TenantResponse updateWarehouseConfig(Long tenantId, UpdateWarehouseConfigRequest request) {
+        TenantEntity tenant = tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant no encontrado"));
+
+        // Verificar que el tenant sea de tipo Warehouse Management
+        if (!"Warehouse Management".equals(tenant.getApp().getName())) {
+            throw new IllegalStateException("El tenant no es de tipo Warehouse Management");
+        }
+
+        // Buscar o crear configuración
+        TenantWarehouseConfigEntity config = tenantWarehouseConfigRepository.findByTenantId(tenantId)
+                .orElseGet(() -> {
+                    TenantWarehouseConfigEntity newConfig = new TenantWarehouseConfigEntity();
+                    newConfig.setTenant(tenant);
+                    return newConfig;
+                });
+
+        // Actualizar campos si se proporcionan
+        if (request.getWarehouseCapacityM3() != null) {
+            config.setWarehouseCapacityM3(request.getWarehouseCapacityM3());
+        }
+        if (request.getLoadingDocks() != null) {
+            config.setLoadingDocks(request.getLoadingDocks());
+        }
+        if (request.getInventorySkuLimit() != null) {
+            config.setInventorySkuLimit(request.getInventorySkuLimit());
+        }
+        if (request.getBarcodeScanning() != null) {
+            config.setBarcodeScanning(request.getBarcodeScanning());
+        }
+        if (request.getRfidEnabled() != null) {
+            config.setRfidEnabled(request.getRfidEnabled());
+        }
+        if (request.getTemperatureControlledZones() != null) {
+            config.setTemperatureControlledZones(request.getTemperatureControlledZones());
+        }
+
+        tenantWarehouseConfigRepository.save(config);
+        return mapToResponse(tenant);
+    }
+
+    /**
+     * Actualiza la configuración de Fleet Management de un tenant
+     */
+    @Transactional
+    public TenantResponse updateFleetConfig(Long tenantId, UpdateFleetConfigRequest request) {
+        TenantEntity tenant = tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant no encontrado"));
+
+        // Verificar que el tenant sea de tipo Fleet Management
+        if (!"Fleet Management".equals(tenant.getApp().getName())) {
+            throw new IllegalStateException("El tenant no es de tipo Fleet Management");
+        }
+
+        // Buscar o crear configuración
+        TenantFleetConfigEntity config = tenantFleetConfigRepository.findByTenantId(tenantId)
+                .orElseGet(() -> {
+                    TenantFleetConfigEntity newConfig = new TenantFleetConfigEntity();
+                    newConfig.setTenant(tenant);
+                    return newConfig;
+                });
+
+        // Actualizar campos si se proporcionan
+        if (request.getVehicleLimit() != null) {
+            config.setVehicleLimit(request.getVehicleLimit());
+        }
+        if (request.getGpsTracking() != null) {
+            config.setGpsTracking(request.getGpsTracking());
+        }
+        if (request.getMaintenanceAlerts() != null) {
+            config.setMaintenanceAlerts(request.getMaintenanceAlerts());
+        }
+        if (request.getFuelMonitoring() != null) {
+            config.setFuelMonitoring(request.getFuelMonitoring());
+        }
+        if (request.getDriverScoring() != null) {
+            config.setDriverScoring(request.getDriverScoring());
+        }
+        if (request.getTelematicsEnabled() != null) {
+            config.setTelematicsEnabled(request.getTelematicsEnabled());
+        }
+
+        tenantFleetConfigRepository.save(config);
+        return mapToResponse(tenant);
     }
 }

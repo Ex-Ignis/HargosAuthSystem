@@ -21,6 +21,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -42,6 +43,7 @@ public class TenantAdminController {
     // ==================== USER MANAGEMENT ====================
 
     @PostMapping("/users")
+    @Transactional
     public ResponseEntity<UserResponse> createUser(
             @Valid @RequestBody CreateUserRequest request,
             Authentication authentication) {
@@ -58,6 +60,7 @@ public class TenantAdminController {
     }
 
     @GetMapping("/users")
+    @Transactional(readOnly = true)
     public ResponseEntity<List<UserResponse>> getMyManagedUsers(Authentication authentication) {
         UserEntity currentUser = getUserFromAuthentication(authentication);
         List<UserResponse> users = userService.getUsersByTenantAdmin(currentUser);
@@ -65,6 +68,7 @@ public class TenantAdminController {
     }
 
     @GetMapping("/users/{id}")
+    @Transactional(readOnly = true)
     public ResponseEntity<UserResponse> getUserById(
             @PathVariable Long id,
             Authentication authentication) {
@@ -79,6 +83,7 @@ public class TenantAdminController {
     }
 
     @PostMapping("/users/{id}/tenants")
+    @Transactional
     public ResponseEntity<UserResponse> assignTenant(
             @PathVariable Long id,
             @Valid @RequestBody AssignTenantRequest request,
@@ -131,6 +136,7 @@ public class TenantAdminController {
 
     // ==================== TENANT INFORMATION ====================
     @GetMapping("/tenants")
+    @Transactional(readOnly = true)
     public ResponseEntity<List<TenantResponse>> getMyManagedTenants(Authentication authentication) {
         UserEntity currentUser = getUserFromAuthentication(authentication);
 
@@ -145,6 +151,7 @@ public class TenantAdminController {
     }
 
     @GetMapping("/tenants/{id}")
+    @Transactional(readOnly = true)
     public ResponseEntity<TenantResponse> getTenantById(
             @PathVariable Long id,
             Authentication authentication) {
@@ -157,6 +164,7 @@ public class TenantAdminController {
     }
 
     @GetMapping("/tenants/{id}/users")
+    @Transactional(readOnly = true)
     public ResponseEntity<List<UserResponse>> getUsersByTenant(
             @PathVariable Long id,
             Authentication authentication) {
@@ -175,6 +183,7 @@ public class TenantAdminController {
                 .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado"));
     }
 
+    @Transactional(readOnly = true)
     private void validateTenantAdminAccess(UserEntity adminUser, List<Long> tenantIds) {
         List<UserTenantRoleEntity> adminTenants = userTenantRoleRepository
                 .findByUserAndRole(adminUser, "TENANT_ADMIN");
@@ -266,7 +275,12 @@ public class TenantAdminController {
             @PathVariable Long invitationId,
             Authentication authentication) {
 
-        // TODO: Validar que el admin gestiona el tenant de la invitación
+        UserEntity currentUser = getUserFromAuthentication(authentication);
+
+        // Validar que el admin gestiona el tenant de la invitación
+        Long invitationTenantId = invitationService.getTenantIdByInvitationId(invitationId);
+        validateTenantAdminAccess(currentUser, List.of(invitationTenantId));
+
         invitationService.deleteInvitation(invitationId);
         return ResponseEntity.ok(new MessageResponse("Invitación eliminada exitosamente"));
     }
@@ -326,7 +340,12 @@ public class TenantAdminController {
             @PathVariable Long accessCodeId,
             Authentication authentication) {
 
-        // TODO: Validar que el admin gestiona el tenant del código
+        UserEntity currentUser = getUserFromAuthentication(authentication);
+
+        // Validar que el admin gestiona el tenant del código
+        Long accessCodeTenantId = accessCodeService.getTenantIdByAccessCodeId(accessCodeId);
+        validateTenantAdminAccess(currentUser, List.of(accessCodeTenantId));
+
         accessCodeService.deactivateAccessCode(accessCodeId);
         return ResponseEntity.ok(new MessageResponse("Código de acceso desactivado exitosamente"));
     }
@@ -339,7 +358,12 @@ public class TenantAdminController {
             @PathVariable Long accessCodeId,
             Authentication authentication) {
 
-        // TODO: Validar que el admin gestiona el tenant del código
+        UserEntity currentUser = getUserFromAuthentication(authentication);
+
+        // Validar que el admin gestiona el tenant del código
+        Long accessCodeTenantId = accessCodeService.getTenantIdByAccessCodeId(accessCodeId);
+        validateTenantAdminAccess(currentUser, List.of(accessCodeTenantId));
+
         accessCodeService.deleteAccessCode(accessCodeId);
         return ResponseEntity.ok(new MessageResponse("Código de acceso eliminado exitosamente"));
     }

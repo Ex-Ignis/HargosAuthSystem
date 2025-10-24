@@ -1,5 +1,6 @@
 package es.hargos.auth.config;
 
+import es.hargos.auth.filter.JwtAuthenticationFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -12,6 +13,7 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -24,6 +26,8 @@ import java.util.List;
 @EnableMethodSecurity(prePostEnabled = true)
 @RequiredArgsConstructor
 public class SecurityConfig {
+
+    private final JwtAuthenticationFilter jwtAuthenticationFilter;
 
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -42,9 +46,9 @@ public class SecurityConfig {
                         // Public endpoints - authentication
                         .requestMatchers("/api/auth/**").permitAll()
 
-                        // Actuator endpoints
+                        // Actuator endpoints - only SUPER_ADMIN
                         .requestMatchers("/actuator/health").permitAll()
-                        .requestMatchers("/actuator/**").authenticated()
+                        .requestMatchers("/actuator/**").hasAuthority("SUPER_ADMIN")
 
                         // Ritrack endpoints - public (called from external applications)
                         .requestMatchers("/api/ritrack/**").permitAll()
@@ -63,7 +67,9 @@ public class SecurityConfig {
 
                         // All other requests require authentication
                         .anyRequest().authenticated()
-                );
+                )
+                // Add JWT filter before UsernamePasswordAuthenticationFilter
+                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }

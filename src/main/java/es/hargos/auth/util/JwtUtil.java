@@ -13,6 +13,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.Date;
 import java.util.List;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Component
@@ -24,9 +25,17 @@ public class JwtUtil {
     @Value("${jwt.access-token-expiration-ms}")
     private Long accessTokenExpiration;
 
-    public String generateAccessToken(UserEntity user, List<UserTenantRoleEntity> userTenantRoles) {
+    /**
+     * Genera un access token con un JTI único
+     * @return Array: [0] = token JWT, [1] = JTI generado
+     */
+    public String[] generateAccessTokenWithJti(UserEntity user, List<UserTenantRoleEntity> userTenantRoles) {
         try {
+            // Generar JTI único
+            String jti = UUID.randomUUID().toString();
+
             JWTClaimsSet.Builder claimsBuilder = new JWTClaimsSet.Builder()
+                    .jwtID(jti) // JWT ID único
                     .subject(user.getEmail())
                     .claim("userId", user.getId())
                     .claim("email", user.getEmail())
@@ -58,10 +67,19 @@ public class JwtUtil {
             JWSSigner signer = new MACSigner(secret.getBytes());
             signedJWT.sign(signer);
 
-            return signedJWT.serialize();
+            return new String[]{signedJWT.serialize(), jti};
         } catch (Exception e) {
             throw new RuntimeException("Error generating JWT token", e);
         }
+    }
+
+    /**
+     * Método legacy para compatibilidad (sin JTI)
+     * @deprecated Usar generateAccessTokenWithJti() en su lugar
+     */
+    @Deprecated
+    public String generateAccessToken(UserEntity user, List<UserTenantRoleEntity> userTenantRoles) {
+        return generateAccessTokenWithJti(user, userTenantRoles)[0];
     }
 
     public boolean validateToken(String token) {
@@ -96,6 +114,17 @@ public class JwtUtil {
     public Long getUserIdFromToken(String token) {
         try {
             return getClaimsFromToken(token).getLongClaim("userId");
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * Extrae el JTI (JWT ID) del token
+     */
+    public String getJtiFromToken(String token) {
+        try {
+            return getClaimsFromToken(token).getJWTID();
         } catch (Exception e) {
             return null;
         }

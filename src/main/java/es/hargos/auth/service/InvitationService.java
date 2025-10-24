@@ -103,6 +103,16 @@ public class InvitationService {
         invitationRepository.delete(invitation);
     }
 
+    /**
+     * Obtiene el ID del tenant de una invitación
+     * Útil para validar permisos antes de eliminarla
+     */
+    public Long getTenantIdByInvitationId(Long invitationId) {
+        InvitationEntity invitation = invitationRepository.findById(invitationId)
+                .orElseThrow(() -> new ResourceNotFoundException("Invitación no encontrada"));
+        return invitation.getTenant().getId();
+    }
+
     private InvitationResponse mapToResponse(InvitationEntity invitation) {
         InvitationResponse response = new InvitationResponse();
         response.setId(invitation.getId());

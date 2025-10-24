@@ -20,6 +20,8 @@ public class TenantRidersConfigEntity {
 
     @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "tenant_id", nullable = false, unique = true)
+    @lombok.ToString.Exclude
+    @lombok.EqualsAndHashCode.Exclude
     private TenantEntity tenant;
 
     @Column(name = "rider_limit")

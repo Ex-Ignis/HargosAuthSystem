@@ -102,6 +102,16 @@ public class AccessCodeService {
     }
 
     /**
+     * Obtiene el ID del tenant de un código de acceso
+     * Útil para validar permisos antes de eliminarlo/desactivarlo
+     */
+    public Long getTenantIdByAccessCodeId(Long accessCodeId) {
+        AccessCodeEntity accessCode = accessCodeRepository.findById(accessCodeId)
+                .orElseThrow(() -> new ResourceNotFoundException("Código de acceso no encontrado"));
+        return accessCode.getTenant().getId();
+    }
+
+    /**
      * Genera un código único en formato: TENANT-YEAR-XXXX
      * Ejemplo: ARENDEL-2025-X7K9
      */

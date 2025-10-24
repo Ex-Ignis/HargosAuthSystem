@@ -21,6 +21,8 @@ public class TenantWarehouseConfigEntity {
 
     @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "tenant_id", nullable = false, unique = true)
+    @lombok.ToString.Exclude
+    @lombok.EqualsAndHashCode.Exclude
     private TenantEntity tenant;
 
     @Column(name = "warehouse_capacity_m3", precision = 10, scale = 2)

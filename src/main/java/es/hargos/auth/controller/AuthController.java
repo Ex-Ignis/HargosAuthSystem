@@ -30,8 +30,10 @@ public class AuthController {
      * Registro simple sin tenant (para clientes que luego comprarán productos)
      */
     @PostMapping("/register")
-    public ResponseEntity<UserResponse> register(@Valid @RequestBody RegisterRequest request) {
-        UserResponse response = authService.register(request);
+    public ResponseEntity<UserResponse> register(
+            @Valid @RequestBody RegisterRequest request,
+            HttpServletRequest httpRequest) {
+        UserResponse response = authService.register(request, httpRequest);
         return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
 
@@ -39,8 +41,10 @@ public class AuthController {
      * Registro aceptando una invitación por email
      */
     @PostMapping("/register/invitation")
-    public ResponseEntity<UserResponse> registerFromInvitation(@Valid @RequestBody AcceptInvitationRequest request) {
-        UserResponse response = authService.registerFromInvitation(request);
+    public ResponseEntity<UserResponse> registerFromInvitation(
+            @Valid @RequestBody AcceptInvitationRequest request,
+            HttpServletRequest httpRequest) {
+        UserResponse response = authService.registerFromInvitation(request, httpRequest);
         return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
 
@@ -48,8 +52,10 @@ public class AuthController {
      * Registro usando un código de acceso
      */
     @PostMapping("/register/access-code")
-    public ResponseEntity<UserResponse> registerWithAccessCode(@Valid @RequestBody RegisterWithAccessCodeRequest request) {
-        UserResponse response = authService.registerWithAccessCode(request);
+    public ResponseEntity<UserResponse> registerWithAccessCode(
+            @Valid @RequestBody RegisterWithAccessCodeRequest request,
+            HttpServletRequest httpRequest) {
+        UserResponse response = authService.registerWithAccessCode(request, httpRequest);
         return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
 
@@ -95,8 +101,10 @@ public class AuthController {
     }
 
     @PostMapping("/forgot-password")
-    public ResponseEntity<MessageResponse> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
-        authService.forgotPassword(request);
+    public ResponseEntity<MessageResponse> forgotPassword(
+            @Valid @RequestBody ForgotPasswordRequest request,
+            HttpServletRequest httpRequest) {
+        authService.forgotPassword(request, httpRequest);
         return ResponseEntity.ok(new MessageResponse("Si el email existe, recibirás un enlace de recuperación"));
     }
 

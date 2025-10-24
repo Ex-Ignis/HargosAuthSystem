@@ -20,6 +20,8 @@ public class RefreshTokenEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
+    @lombok.ToString.Exclude
+    @lombok.EqualsAndHashCode.Exclude
     private UserEntity user;
 
     @Column(unique = true, nullable = false, length = 500)

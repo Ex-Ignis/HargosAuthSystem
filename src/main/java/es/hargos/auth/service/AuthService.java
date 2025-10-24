@@ -47,28 +47,55 @@ public class AuthService {
     private final InvitationService invitationService;
     private final AccessCodeService accessCodeService;
     private final EmailService emailService;
+    private final es.hargos.auth.util.PasswordValidator passwordValidator;
 
     @Value("${jwt.access-token-expiration-ms}")
     private Long accessTokenExpiration;
 
     @Transactional
-    public UserResponse register(RegisterRequest request) {
-        // Verificar si el usuario ya existe
-        if (userRepository.existsByEmail(request.getEmail())) {
-            throw new DuplicateResourceException("El email ya está registrado");
+    public UserResponse register(RegisterRequest request, HttpServletRequest httpRequest) {
+        // 1. Rate Limiting: Verificar límite de registros por IP
+        String clientIp = getClientIp(httpRequest);
+        if (!rateLimitService.allowRegisterAttempt(clientIp)) {
+            throw new RateLimitExceededException(
+                "Demasiados intentos de registro. Por favor, espera antes de volver a intentar."
+            );
         }
 
-        // Crear usuario SIN asignación a ningún tenant
+        // 2. Validar contraseña fuerte
+        String passwordError = passwordValidator.getValidationMessage(request.getPassword());
+        if (passwordError != null) {
+            throw new InvalidCredentialsException(passwordError);
+        }
+
+        // 3. Verificar si el usuario ya existe
+        // IMPORTANTE: Para prevenir enumeración de usuarios, NO lanzamos excepción aquí
+        // En su lugar, devolvemos un UserResponse genérico sin crear cuenta
+        if (userRepository.existsByEmail(request.getEmail())) {
+            // Devolver respuesta genérica (email ya registrado, pero no lo revelamos)
+            // El frontend siempre mostrará: "Registro exitoso. Verifica tu email."
+            return new UserResponse(
+                    null,  // No revelamos ID
+                    request.getEmail(),
+                    request.getFullName(),
+                    false,  // No activo porque no creamos cuenta
+                    false,  // No verificado
+                    new ArrayList<>(),
+                    LocalDateTime.now()
+            );
+        }
+
+        // 4. Crear usuario SIN asignación a ningún tenant
         UserEntity user = new UserEntity();
         user.setEmail(request.getEmail());
         user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
         user.setFullName(request.getFullName());
         user.setIsActive(true);
-        user.setEmailVerified(false); // Requiere verificación por email
+        user.setEmailVerified(false);
 
         user = userRepository.save(user);
 
-        // Devolver usuario sin tenants (lista vacía)
+        // 5. Devolver usuario sin tenants (lista vacía)
         return new UserResponse(
                 user.getId(),
                 user.getEmail(),
@@ -123,14 +150,19 @@ public class AuthService {
         }
 
         List<UserTenantRoleEntity> userTenantRoles = userTenantRoleRepository.findByUserWithTenantAndApp(user);
-        String accessToken = jwtUtil.generateAccessToken(user, userTenantRoles);
+
+        // Generar access token con JTI único
+        String[] tokenAndJti = jwtUtil.generateAccessTokenWithJti(user, userTenantRoles);
+        String accessToken = tokenAndJti[0];
+        String jti = tokenAndJti[1];
 
         RefreshTokenEntity refreshToken = refreshTokenService.createRefreshToken(user);
 
-        // Crear nueva sesión
+        // Crear nueva sesión con JTI
         UserSessionEntity session = new UserSessionEntity();
         session.setUser(user);
         session.setRefreshToken(refreshToken);
+        session.setAccessTokenJti(jti); // Guardar JTI del access token
         session.setIpAddress(getClientIp(httpRequest));
         session.setUserAgent(httpRequest.getHeader("User-Agent"));
         session.setDeviceType(UserSessionEntity.detectDeviceType(httpRequest.getHeader("User-Agent")));
@@ -167,7 +199,19 @@ public class AuthService {
         UserEntity user = refreshToken.getUser();
         List<UserTenantRoleEntity> userTenantRoles = userTenantRoleRepository.findByUserWithTenantAndApp(user);
 
-        String accessToken = jwtUtil.generateAccessToken(user, userTenantRoles);
+        // Generar nuevo access token con nuevo JTI
+        String[] tokenAndJti = jwtUtil.generateAccessTokenWithJti(user, userTenantRoles);
+        String accessToken = tokenAndJti[0];
+        String jti = tokenAndJti[1];
+
+        // Actualizar JTI en la sesión
+        userSessionRepository.findByRefreshToken(refreshToken).ifPresent(session -> {
+            if (!session.getIsRevoked()) {
+                session.setAccessTokenJti(jti);
+                userSessionRepository.save(session);
+            }
+        });
+
         UserResponse userResponse = mapToUserResponse(user, userTenantRoles);
 
         return new LoginResponse(
@@ -242,20 +286,34 @@ public class AuthService {
      * Registrarse aceptando una invitación por email
      */
     @Transactional
-    public UserResponse registerFromInvitation(AcceptInvitationRequest request) {
-        // Obtener y validar invitación
+    public UserResponse registerFromInvitation(AcceptInvitationRequest request, HttpServletRequest httpRequest) {
+        // 1. Rate Limiting: Verificar límite de registros con invitación por IP
+        String clientIp = getClientIp(httpRequest);
+        if (!rateLimitService.allowRegisterWithInvitationAttempt(clientIp)) {
+            throw new RateLimitExceededException(
+                "Demasiados intentos de registro con invitación. Por favor, espera antes de volver a intentar."
+            );
+        }
+
+        // 2. Validar contraseña fuerte
+        String passwordError = passwordValidator.getValidationMessage(request.getPassword());
+        if (passwordError != null) {
+            throw new InvalidCredentialsException(passwordError);
+        }
+
+        // 3. Obtener y validar invitación
         InvitationEntity invitation = invitationService.getInvitationByToken(request.getToken());
 
         if (!invitation.isValid()) {
             throw new InvalidCredentialsException("La invitación ha expirado o ya fue usada");
         }
 
-        // Verificar si el usuario ya existe
+        // 4. Verificar si el usuario ya existe
         if (userRepository.existsByEmail(invitation.getEmail())) {
             throw new DuplicateResourceException("El email ya está registrado");
         }
 
-        // Crear usuario
+        // 5. Crear usuario
         UserEntity user = new UserEntity();
         user.setEmail(invitation.getEmail());
         user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
@@ -265,17 +323,17 @@ public class AuthService {
 
         user = userRepository.save(user);
 
-        // Asignar al tenant con el rol de la invitación
+        // 6. Asignar al tenant con el rol de la invitación
         UserTenantRoleEntity userTenantRole = new UserTenantRoleEntity();
         userTenantRole.setUser(user);
         userTenantRole.setTenant(invitation.getTenant());
         userTenantRole.setRole(invitation.getRole());
         userTenantRoleRepository.save(userTenantRole);
 
-        // Marcar invitación como aceptada
+        // 7. Marcar invitación como aceptada
         invitationService.markAsAccepted(invitation);
 
-        // Devolver usuario
+        // 8. Devolver usuario
         List<UserTenantRoleEntity> roles = userTenantRoleRepository.findByUserWithTenantAndApp(user);
         return mapToUserResponse(user, roles);
     }
@@ -284,20 +342,34 @@ public class AuthService {
      * Registrarse usando un código de acceso
      */
     @Transactional
-    public UserResponse registerWithAccessCode(RegisterWithAccessCodeRequest request) {
-        // Obtener y validar código de acceso
+    public UserResponse registerWithAccessCode(RegisterWithAccessCodeRequest request, HttpServletRequest httpRequest) {
+        // 1. Rate Limiting: Verificar límite de registros con código de acceso por IP
+        String clientIp = getClientIp(httpRequest);
+        if (!rateLimitService.allowRegisterWithAccessCodeAttempt(clientIp)) {
+            throw new RateLimitExceededException(
+                "Demasiados intentos de registro con código de acceso. Por favor, espera antes de volver a intentar."
+            );
+        }
+
+        // 2. Validar contraseña fuerte
+        String passwordError = passwordValidator.getValidationMessage(request.getPassword());
+        if (passwordError != null) {
+            throw new InvalidCredentialsException(passwordError);
+        }
+
+        // 3. Obtener y validar código de acceso
         AccessCodeEntity accessCode = accessCodeService.getAccessCodeByCode(request.getAccessCode());
 
         if (!accessCode.isValid()) {
             throw new InvalidCredentialsException("El código de acceso es inválido, ha expirado o alcanzó el límite de usos");
         }
 
-        // Verificar si el usuario ya existe
+        // 4. Verificar si el usuario ya existe
         if (userRepository.existsByEmail(request.getEmail())) {
             throw new DuplicateResourceException("El email ya está registrado");
         }
 
-        // Crear usuario
+        // 5. Crear usuario
         UserEntity user = new UserEntity();
         user.setEmail(request.getEmail());
         user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
@@ -307,17 +379,17 @@ public class AuthService {
 
         user = userRepository.save(user);
 
-        // Asignar al tenant con el rol del código
+        // 6. Asignar al tenant con el rol del código
         UserTenantRoleEntity userTenantRole = new UserTenantRoleEntity();
         userTenantRole.setUser(user);
         userTenantRole.setTenant(accessCode.getTenant());
         userTenantRole.setRole(accessCode.getRole());
         userTenantRoleRepository.save(userTenantRole);
 
-        // Incrementar usos del código
+        // 7. Incrementar usos del código
         accessCodeService.incrementUses(accessCode);
 
-        // Devolver usuario
+        // 8. Devolver usuario
         List<UserTenantRoleEntity> roles = userTenantRoleRepository.findByUserWithTenantAndApp(user);
         return mapToUserResponse(user, roles);
     }
@@ -326,23 +398,38 @@ public class AuthService {
      * Solicitar recuperación de contraseña
      */
     @Transactional
-    public void forgotPassword(ForgotPasswordRequest request) {
-        // Buscar usuario por email
+    public void forgotPassword(ForgotPasswordRequest request, HttpServletRequest httpRequest) {
+        // 1. Rate Limiting por IP: Verificar límite de intentos por IP
+        String clientIp = getClientIp(httpRequest);
+        if (!rateLimitService.allowForgotPasswordAttemptByIp(clientIp)) {
+            throw new RateLimitExceededException(
+                "Demasiados intentos de recuperación de contraseña. Por favor, espera antes de volver a intentar."
+            );
+        }
+
+        // 2. Rate Limiting por Email: Verificar límite de intentos por email
+        if (!rateLimitService.allowForgotPasswordAttemptByEmail(request.getEmail())) {
+            throw new RateLimitExceededException(
+                "Demasiados intentos de recuperación para este email. Por favor, espera antes de volver a intentar."
+            );
+        }
+
+        // 3. Buscar usuario por email
         UserEntity user = userRepository.findByEmail(request.getEmail())
                 .orElseThrow(() -> new InvalidCredentialsException("No se encontró un usuario con ese email"));
 
-        // Generar token único
+        // 4. Generar token único
         String token = UUID.randomUUID().toString();
 
-        // Establecer expiración en 1 hora
+        // 5. Establecer expiración en 1 hora
         LocalDateTime expiresAt = LocalDateTime.now().plusHours(1);
 
-        // Guardar token y expiración en el usuario
+        // 6. Guardar token y expiración en el usuario
         user.setPasswordResetToken(token);
         user.setPasswordResetExpiresAt(expiresAt);
         userRepository.save(user);
 
-        // Enviar email de recuperación
+        // 7. Enviar email de recuperación
         emailService.sendPasswordResetEmail(user.getEmail(), user.getFullName(), token);
     }
 
@@ -351,20 +438,26 @@ public class AuthService {
      */
     @Transactional
     public void resetPassword(ResetPasswordRequest request) {
-        // Buscar usuario por token
+        // 1. Validar contraseña fuerte
+        String passwordError = passwordValidator.getValidationMessage(request.getNewPassword());
+        if (passwordError != null) {
+            throw new InvalidCredentialsException(passwordError);
+        }
+
+        // 2. Buscar usuario por token
         UserEntity user = userRepository.findByPasswordResetToken(request.getToken())
                 .orElseThrow(() -> new InvalidCredentialsException("Token de recuperación inválido o expirado"));
 
-        // Verificar que el token no ha expirado
+        // 3. Verificar que el token no ha expirado
         if (user.getPasswordResetExpiresAt() == null ||
             user.getPasswordResetExpiresAt().isBefore(LocalDateTime.now())) {
             throw new InvalidCredentialsException("El token de recuperación ha expirado");
         }
 
-        // Actualizar contraseña
+        // 4. Actualizar contraseña
         user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
 
-        // Limpiar token de recuperación
+        // 5. Limpiar token de recuperación
         user.setPasswordResetToken(null);
         user.setPasswordResetExpiresAt(null);
 

@@ -20,6 +20,8 @@ public class InvitationEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "tenant_id", nullable = false)
+    @lombok.ToString.Exclude
+    @lombok.EqualsAndHashCode.Exclude
     private TenantEntity tenant;
 
     @Column(nullable = false)

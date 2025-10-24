@@ -20,10 +20,14 @@ public class UserSessionEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
+    @lombok.ToString.Exclude
+    @lombok.EqualsAndHashCode.Exclude
     private UserEntity user;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "refresh_token_id", nullable = false)
+    @lombok.ToString.Exclude
+    @lombok.EqualsAndHashCode.Exclude
     private RefreshTokenEntity refreshToken;
 
     @Column(name = "ip_address", length = 45)
@@ -34,6 +38,9 @@ public class UserSessionEntity {
 
     @Column(name = "device_type", length = 20)
     private String deviceType; // web, mobile, desktop, unknown
+
+    @Column(name = "access_token_jti", length = 100)
+    private String accessTokenJti; // JWT ID para vincular y revocar access tokens
 
     @Column(name = "last_activity_at", nullable = false)
     private LocalDateTime lastActivityAt;

@@ -1,9 +1,6 @@
 package es.hargos.auth.controller;
 
-import es.hargos.auth.dto.request.AssignTenantRequest;
-import es.hargos.auth.dto.request.CreateOrganizationRequest;
-import es.hargos.auth.dto.request.CreateTenantRequest;
-import es.hargos.auth.dto.request.CreateUserRequest;
+import es.hargos.auth.dto.request.*;
 import es.hargos.auth.dto.response.MessageResponse;
 import es.hargos.auth.dto.response.OrganizationResponse;
 import es.hargos.auth.dto.response.TenantResponse;
@@ -70,6 +67,31 @@ public class AdminController {
         return ResponseEntity.ok(response);
     }
 
+    @PutMapping("/users/{id}")
+    public ResponseEntity<UserResponse> updateUser(
+            @PathVariable Long id,
+            @Valid @RequestBody UpdateUserRequest request) {
+        UserResponse response = userService.updateUser(id, request);
+        return ResponseEntity.ok(response);
+    }
+
+    @DeleteMapping("/users/{id}/tenants/{tenantId}")
+    public ResponseEntity<UserResponse> removeTenantFromUser(
+            @PathVariable Long id,
+            @PathVariable Long tenantId) {
+        UserResponse response = userService.removeTenantFromUser(id, tenantId);
+        return ResponseEntity.ok(response);
+    }
+
+    @PutMapping("/users/{id}/tenants/{tenantId}/role")
+    public ResponseEntity<UserResponse> updateUserTenantRole(
+            @PathVariable Long id,
+            @PathVariable Long tenantId,
+            @Valid @RequestBody UpdateTenantRoleRequest request) {
+        UserResponse response = userService.updateUserTenantRole(id, tenantId, request);
+        return ResponseEntity.ok(response);
+    }
+
     @DeleteMapping("/users/{id}")
     public ResponseEntity<MessageResponse> deleteUser(@PathVariable Long id) {
         userService.deleteUser(id);
@@ -93,6 +115,14 @@ public class AdminController {
     public ResponseEntity<OrganizationResponse> getOrganizationById(@PathVariable Long id) {
         OrganizationResponse organization = organizationService.getOrganizationById(id);
         return ResponseEntity.ok(organization);
+    }
+
+    @PutMapping("/organizations/{id}")
+    public ResponseEntity<OrganizationResponse> updateOrganization(
+            @PathVariable Long id,
+            @Valid @RequestBody UpdateOrganizationRequest request) {
+        OrganizationResponse response = organizationService.updateOrganization(id, request);
+        return ResponseEntity.ok(response);
     }
 
     @DeleteMapping("/organizations/{id}")
@@ -124,6 +154,38 @@ public class AdminController {
     public ResponseEntity<List<TenantResponse>> getTenantsByOrganization(@PathVariable Long organizationId) {
         List<TenantResponse> tenants = tenantService.getTenantsByOrganization(organizationId);
         return ResponseEntity.ok(tenants);
+    }
+
+    @PutMapping("/tenants/{id}")
+    public ResponseEntity<TenantResponse> updateTenant(
+            @PathVariable Long id,
+            @Valid @RequestBody UpdateTenantRequest request) {
+        TenantResponse response = tenantService.updateTenant(id, request);
+        return ResponseEntity.ok(response);
+    }
+
+    @PutMapping("/tenants/{id}/riders-config")
+    public ResponseEntity<TenantResponse> updateRidersConfig(
+            @PathVariable Long id,
+            @Valid @RequestBody UpdateRidersConfigRequest request) {
+        TenantResponse response = tenantService.updateRidersConfig(id, request);
+        return ResponseEntity.ok(response);
+    }
+
+    @PutMapping("/tenants/{id}/warehouse-config")
+    public ResponseEntity<TenantResponse> updateWarehouseConfig(
+            @PathVariable Long id,
+            @Valid @RequestBody UpdateWarehouseConfigRequest request) {
+        TenantResponse response = tenantService.updateWarehouseConfig(id, request);
+        return ResponseEntity.ok(response);
+    }
+
+    @PutMapping("/tenants/{id}/fleet-config")
+    public ResponseEntity<TenantResponse> updateFleetConfig(
+            @PathVariable Long id,
+            @Valid @RequestBody UpdateFleetConfigRequest request) {
+        TenantResponse response = tenantService.updateFleetConfig(id, request);
+        return ResponseEntity.ok(response);
     }
 
     @DeleteMapping("/tenants/{id}")

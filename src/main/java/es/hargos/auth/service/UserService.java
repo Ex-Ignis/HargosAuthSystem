@@ -2,6 +2,8 @@ package es.hargos.auth.service;
 
 import es.hargos.auth.dto.request.AssignTenantRequest;
 import es.hargos.auth.dto.request.CreateUserRequest;
+import es.hargos.auth.dto.request.UpdateUserRequest;
+import es.hargos.auth.dto.request.UpdateTenantRoleRequest;
 import es.hargos.auth.dto.response.TenantRoleResponse;
 import es.hargos.auth.dto.response.UserResponse;
 import es.hargos.auth.entity.TenantEntity;
@@ -211,5 +213,87 @@ public class UserService {
                 tenants,
                 user.getCreatedAt()
         );
+    }
+
+    /**
+     * Actualiza la información de un usuario (email, fullName, password)
+     */
+    @Transactional
+    public UserResponse updateUser(Long userId, UpdateUserRequest request) {
+        UserEntity user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado"));
+
+        // Actualizar campos si se proporcionan
+        if (request.getEmail() != null && !request.getEmail().trim().isEmpty()) {
+            // Verificar que el email no esté en uso por otro usuario
+            if (!request.getEmail().equals(user.getEmail())) {
+                if (userRepository.existsByEmail(request.getEmail())) {
+                    throw new DuplicateResourceException("El email ya está en uso");
+                }
+                user.setEmail(request.getEmail());
+            }
+        }
+
+        if (request.getFullName() != null && !request.getFullName().trim().isEmpty()) {
+            user.setFullName(request.getFullName());
+        }
+
+        if (request.getPassword() != null && !request.getPassword().trim().isEmpty()) {
+            user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
+        }
+
+        user = userRepository.save(user);
+
+        List<UserTenantRoleEntity> userTenantRoles = userTenantRoleRepository.findByUserWithTenantAndApp(user);
+        return mapToUserResponse(user, userTenantRoles);
+    }
+
+    /**
+     * Quita un tenant de un usuario
+     */
+    @Transactional
+    public UserResponse removeTenantFromUser(Long userId, Long tenantId) {
+        UserEntity user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado"));
+
+        TenantEntity tenant = tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant no encontrado"));
+
+        // Buscar la relación usuario-tenant
+        UserTenantRoleEntity userTenantRole = userTenantRoleRepository
+                .findByUserAndTenant(user, tenant)
+                .orElseThrow(() -> new ResourceNotFoundException("El usuario no está asignado a este tenant"));
+
+        // Eliminar la relación
+        userTenantRoleRepository.delete(userTenantRole);
+
+        // Devolver usuario actualizado
+        List<UserTenantRoleEntity> remainingRoles = userTenantRoleRepository.findByUserWithTenantAndApp(user);
+        return mapToUserResponse(user, remainingRoles);
+    }
+
+    /**
+     * Actualiza el rol de un usuario en un tenant específico
+     */
+    @Transactional
+    public UserResponse updateUserTenantRole(Long userId, Long tenantId, UpdateTenantRoleRequest request) {
+        UserEntity user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado"));
+
+        TenantEntity tenant = tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant no encontrado"));
+
+        // Buscar la relación usuario-tenant
+        UserTenantRoleEntity userTenantRole = userTenantRoleRepository
+                .findByUserAndTenant(user, tenant)
+                .orElseThrow(() -> new ResourceNotFoundException("El usuario no está asignado a este tenant"));
+
+        // Actualizar rol
+        userTenantRole.setRole(request.getRole());
+        userTenantRoleRepository.save(userTenantRole);
+
+        // Devolver usuario actualizado
+        List<UserTenantRoleEntity> userTenantRoles = userTenantRoleRepository.findByUserWithTenantAndApp(user);
+        return mapToUserResponse(user, userTenantRoles);
     }
 }

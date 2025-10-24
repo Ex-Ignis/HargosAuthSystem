@@ -49,4 +49,13 @@ public interface UserSessionRepository extends JpaRepository<UserSessionEntity, 
      * Encuentra la sesión más antigua (por createdAt) de un usuario que no esté revocada
      */
     Optional<UserSessionEntity> findFirstByUserAndIsRevokedOrderByCreatedAtAsc(UserEntity user, Boolean isRevoked);
+
+    /**
+     * Encuentra una sesión por el JTI del access token
+     * Se usa para verificar si un access token ha sido revocado
+     */
+    @Query("SELECT s FROM UserSessionEntity s " +
+           "WHERE s.accessTokenJti = :jti " +
+           "AND s.isRevoked = false")
+    Optional<UserSessionEntity> findActiveSessionByJti(@Param("jti") String jti);
 }

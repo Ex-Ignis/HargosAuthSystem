@@ -36,6 +36,8 @@ public class OrganizationEntity {
     private LocalDateTime updatedAt;
 
     @OneToMany(mappedBy = "organization", cascade = CascadeType.ALL, orphanRemoval = true)
+    @lombok.ToString.Exclude
+    @lombok.EqualsAndHashCode.Exclude
     private Set<TenantEntity> tenants = new HashSet<>();
 
     @PrePersist
