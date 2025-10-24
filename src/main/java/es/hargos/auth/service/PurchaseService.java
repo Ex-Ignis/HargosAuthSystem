@@ -10,6 +10,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+
 @Service
 @RequiredArgsConstructor
 public class PurchaseService {
@@ -95,7 +97,14 @@ public class PurchaseService {
                 if (request.getWarehouseConfig() != null) {
                     TenantWarehouseConfigEntity warehouseConfig = new TenantWarehouseConfigEntity();
                     warehouseConfig.setTenant(tenant);
-                    warehouseConfig.setWarehouseCapacityM3(request.getWarehouseConfig().getWarehouseCapacityM3());
+
+                    // Convertir Double a BigDecimal
+                    if (request.getWarehouseConfig().getWarehouseCapacityM3() != null) {
+                        warehouseConfig.setWarehouseCapacityM3(
+                            BigDecimal.valueOf(request.getWarehouseConfig().getWarehouseCapacityM3())
+                        );
+                    }
+
                     warehouseConfig.setLoadingDocks(request.getWarehouseConfig().getLoadingDocks());
                     warehouseConfig.setInventorySkuLimit(request.getWarehouseConfig().getInventorySkuLimit());
                     warehouseConfig.setBarcodeScanning(request.getWarehouseConfig().getBarcodeScanning());

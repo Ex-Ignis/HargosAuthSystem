@@ -26,7 +26,7 @@ public class PurchaseController {
      * Comprar un producto (Riders, Warehouse, Fleet Management).
      * Crea una organizaci\u00f3n, un tenant y asigna al usuario como TENANT_ADMIN.
      */
-    @PostMapping
+    @PostMapping("/product")
     public ResponseEntity<TenantResponse> purchaseProduct(@Valid @RequestBody PurchaseProductRequest request) {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         String userEmail = auth.getName();
