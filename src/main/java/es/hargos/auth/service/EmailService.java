@@ -6,6 +6,7 @@ import com.resend.services.emails.model.CreateEmailOptions;
 import com.resend.services.emails.model.CreateEmailResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -25,8 +26,10 @@ public class EmailService {
     }
 
     /**
-     * Envía email de recuperación de contraseña
+     * Envía email de recuperación de contraseña de forma asíncrona
+     * No bloquea el thread principal - se ejecuta en un thread separado
      */
+    @Async
     public void sendPasswordResetEmail(String toEmail, String userName, String token) {
         String resetLink = frontendUrl + "/reset-password?token=" + token;
 
@@ -49,8 +52,10 @@ public class EmailService {
     }
 
     /**
-     * Envia email de invitación a un usuario para unirse a un tenant.
+     * Envia email de invitación a un usuario para unirse a un tenant de forma asíncrona
+     * No bloquea el thread principal - se ejecuta en un thread separado
      */
+    @Async
     public void sendInvitationEmail(String toEmail, String tenantName, String token) {
         String invitationLink = frontendUrl + "/accept-invitation?token=" + token;
 

@@ -16,6 +16,7 @@ import java.util.ArrayList;
 import es.hargos.auth.entity.*;
 import es.hargos.auth.exception.DuplicateResourceException;
 import es.hargos.auth.exception.InvalidCredentialsException;
+import es.hargos.auth.exception.RateLimitExceededException;
 import es.hargos.auth.repository.UserRepository;
 import es.hargos.auth.repository.UserSessionRepository;
 import es.hargos.auth.repository.UserTenantRoleRepository;
@@ -40,6 +41,7 @@ public class AuthService {
     private final UserTenantRoleRepository userTenantRoleRepository;
     private final UserSessionRepository userSessionRepository;
     private final RefreshTokenService refreshTokenService;
+    private final RateLimitService rateLimitService;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
     private final InvitationService invitationService;
@@ -80,6 +82,14 @@ public class AuthService {
 
     @Transactional
     public LoginResponse login(LoginRequest request, HttpServletRequest httpRequest) {
+        // 1. Rate Limiting: Verificar límite de intentos por IP
+        String clientIp = getClientIp(httpRequest);
+        if (!rateLimitService.allowLoginAttempt(clientIp)) {
+            throw new RateLimitExceededException(
+                "Demasiados intentos de login. Por favor, espera un momento antes de volver a intentar."
+            );
+        }
+
         UserEntity user = userRepository.findByEmail(request.getEmail())
                 .orElseThrow(() -> new InvalidCredentialsException("Usuario o contraseña incorrecto"));
 
