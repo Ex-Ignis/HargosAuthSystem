@@ -24,12 +24,16 @@ public class AccessCodeService {
     private final AccessCodeRepository accessCodeRepository;
     private final TenantRepository tenantRepository;
     private final UserRepository userRepository;
+    private final TenantLimitService tenantLimitService;
 
     @Transactional
     public AccessCodeResponse createAccessCode(CreateAccessCodeRequest request, Long createdByUserId) {
         // Verificar que el tenant existe
         TenantEntity tenant = tenantRepository.findById(request.getTenantId())
                 .orElseThrow(() -> new ResourceNotFoundException("Tenant no encontrado"));
+
+        // VALIDACIÓN: Verificar que el tenant no haya alcanzado el límite de cuentas
+        tenantLimitService.validateCanAddUser(tenant);
 
         // Generar código único
         String code = generateUniqueCode(tenant.getName());

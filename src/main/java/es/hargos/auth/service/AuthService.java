@@ -48,6 +48,7 @@ public class AuthService {
     private final AccessCodeService accessCodeService;
     private final EmailService emailService;
     private final es.hargos.auth.util.PasswordValidator passwordValidator;
+    private final TenantLimitService tenantLimitService;
 
     @Value("${jwt.access-token-expiration-ms}")
     private Long accessTokenExpiration;
@@ -308,7 +309,10 @@ public class AuthService {
             throw new InvalidCredentialsException("La invitación ha expirado o ya fue usada");
         }
 
-        // 4. Verificar si el usuario ya existe
+        // 4. VALIDACIÓN: Verificar límite de cuentas del tenant
+        tenantLimitService.validateCanAddUser(invitation.getTenant());
+
+        // 5. Verificar si el usuario ya existe
         if (userRepository.existsByEmail(invitation.getEmail())) {
             throw new DuplicateResourceException("El email ya está registrado");
         }
@@ -364,7 +368,10 @@ public class AuthService {
             throw new InvalidCredentialsException("El código de acceso es inválido, ha expirado o alcanzó el límite de usos");
         }
 
-        // 4. Verificar si el usuario ya existe
+        // 4. VALIDACIÓN: Verificar límite de cuentas del tenant
+        tenantLimitService.validateCanAddUser(accessCode.getTenant());
+
+        // 5. Verificar si el usuario ya existe
         if (userRepository.existsByEmail(request.getEmail())) {
             throw new DuplicateResourceException("El email ya está registrado");
         }

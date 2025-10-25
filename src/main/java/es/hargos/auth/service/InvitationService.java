@@ -27,12 +27,16 @@ public class InvitationService {
     private final TenantRepository tenantRepository;
     private final UserRepository userRepository;
     private final EmailService emailService;
+    private final TenantLimitService tenantLimitService;
 
     @Transactional
     public InvitationResponse createInvitation(CreateInvitationRequest request, Long invitedByUserId) {
         // Verificar que el tenant existe
         TenantEntity tenant = tenantRepository.findById(request.getTenantId())
                 .orElseThrow(() -> new ResourceNotFoundException("Tenant no encontrado"));
+
+        // VALIDACIÓN: Verificar que el tenant no haya alcanzado el límite de cuentas
+        tenantLimitService.validateCanAddUser(tenant);
 
         // Verificar que no exista una invitación pendiente para este email y tenant
         if (invitationRepository.existsByEmailAndTenantAndAccepted(request.getEmail(), tenant, false)) {
