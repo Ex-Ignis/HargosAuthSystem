@@ -17,6 +17,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -38,13 +39,13 @@ public class AuthController {
     }
 
     /**
-     * Registro aceptando una invitación por email
+     * Registro aceptando una invitación por email (con auto-login)
      */
     @PostMapping("/register/invitation")
-    public ResponseEntity<UserResponse> registerFromInvitation(
+    public ResponseEntity<LoginResponse> registerFromInvitation(
             @Valid @RequestBody AcceptInvitationRequest request,
             HttpServletRequest httpRequest) {
-        UserResponse response = authService.registerFromInvitation(request, httpRequest);
+        LoginResponse response = authService.registerFromInvitation(request, httpRequest);
         return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
 
@@ -57,6 +58,38 @@ public class AuthController {
             HttpServletRequest httpRequest) {
         UserResponse response = authService.registerWithAccessCode(request, httpRequest);
         return new ResponseEntity<>(response, HttpStatus.CREATED);
+    }
+
+    /**
+     * Verificar si una invitación es válida y obtener información del tenant
+     */
+    @GetMapping("/invitation/{token}")
+    public ResponseEntity<?> getInvitationInfo(@PathVariable String token) {
+        return ResponseEntity.ok(authService.getInvitationInfo(token));
+    }
+
+    /**
+     * Aceptar invitación para usuario YA EXISTENTE (autenticado)
+     */
+    @PostMapping("/accept-invitation")
+    public ResponseEntity<UserResponse> acceptInvitation(
+            @RequestParam String token,
+            Authentication authentication) {
+        String userEmail = authentication.getName();
+        UserResponse response = authService.acceptInvitationForExistingUser(token, userEmail);
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Unirse a un tenant usando código de acceso para usuario YA EXISTENTE (autenticado)
+     */
+    @PostMapping("/join-with-access-code")
+    public ResponseEntity<UserResponse> joinWithAccessCode(
+            @RequestParam String code,
+            Authentication authentication) {
+        String userEmail = authentication.getName();
+        UserResponse response = authService.joinTenantWithAccessCode(code, userEmail);
+        return ResponseEntity.ok(response);
     }
 
     @PostMapping("/login")

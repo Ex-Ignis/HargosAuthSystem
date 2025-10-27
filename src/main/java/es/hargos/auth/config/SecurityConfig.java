@@ -43,6 +43,10 @@ public class SecurityConfig {
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
                 .authorizeHttpRequests(auth -> auth
+                        // Endpoints that REQUIRE authentication (must be before /api/auth/**)
+                        .requestMatchers("/api/auth/join-with-access-code").authenticated()
+                        .requestMatchers("/api/auth/accept-invitation").authenticated()
+
                         // Public endpoints - authentication
                         .requestMatchers("/api/auth/**").permitAll()
 

@@ -15,43 +15,67 @@ public class PasswordHashGenerator {
     public static void main(String[] args) {
         BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
 
+        System.out.println("=".repeat(80));
+        System.out.println(" ".repeat(25) + "GENERADOR DE HASH BCRYPT");
+        System.out.println("=".repeat(80));
+        System.out.println();
+
+        // ============================================
+        // OPCIÓN 1: Generar hash de UNA contraseña
+        // ============================================
+        System.out.println("OPCIÓN 1: Hash de contraseña única");
+        System.out.println("-".repeat(80));
+
         // ⚠️ CAMBIAR ESTA CONTRASEÑA
-        String password = "v";
+        String singlePassword = "ArendelAdmin123!";
+        String singleHash = encoder.encode(singlePassword);
 
-        String hash = encoder.encode(password);
+        System.out.println("Contraseña: " + singlePassword);
+        System.out.println("Hash BCrypt: " + singleHash);
+        System.out.println();
 
-        System.out.println("=".repeat(70));
-        System.out.println("GENERADOR DE HASH BCRYPT");
-        System.out.println("=".repeat(70));
-        System.out.println();
-        System.out.println("Contraseña original: " + password);
-        System.out.println();
-        System.out.println("Hash BCrypt generado:");
-        System.out.println(hash);
-        System.out.println();
-        System.out.println("Copia este hash y reemplázalo en:");
-        System.out.println("init-db.sql o por el hash de SuperAdmin");
-        System.out.println();
-        System.out.println("En la línea que dice:");
-        System.out.println("VALUES ('admin@hargos.es', 'AQUI_VA_EL_HASH', ...)");
-        System.out.println();
-        System.out.println("=".repeat(70));
+        // ============================================
+        // OPCIÓN 2: Generar hashes de MÚLTIPLES contraseñas
+        // ============================================
+        System.out.println("OPCIÓN 2: Hashes para usuarios de prueba");
+        System.out.println("-".repeat(80));
 
-        // Generar algunos hashes adicionales para usuarios de prueba
-//        System.out.println();
-//        System.out.println("Hashes adicionales para usuarios de prueba:");
-//        System.out.println("-".repeat(70));
-//
-//        String[] testPasswords = {
-//            "TenantAdmin123!",
-//            "User123!"
-//        };
+        String[][] testUsers = {
+            {"test123", "Para desarrollo/testing rápido"},
+            {"Admin123!", "Para SUPER_ADMIN"},
+            {"TenantAdmin123!", "Para TENANT_ADMIN"},
+            {"User123!", "Para usuarios normales"}
+        };
 
-//        for (String pwd : testPasswords) {
-//            String testHash = encoder.encode(pwd);
-//            System.out.println("Password: " + pwd);
-//            System.out.println("Hash:     " + testHash);
-//            System.out.println();
-//        }
+        for (String[] userInfo : testUsers) {
+            String pwd = userInfo[0];
+            String description = userInfo[1];
+            String hash = encoder.encode(pwd);
+
+            System.out.println("Contraseña:  " + pwd);
+            System.out.println("Descripción: " + description);
+            System.out.println("Hash:        " + hash);
+            System.out.println();
+        }
+
+        // ============================================
+        // INSTRUCCIONES DE USO
+        // ============================================
+        System.out.println("=".repeat(80));
+        System.out.println("INSTRUCCIONES:");
+        System.out.println("-".repeat(80));
+        System.out.println("1. Copia el hash generado");
+        System.out.println("2. Úsalo en el script SQL de inicialización");
+        System.out.println("3. Ejemplo en SQL:");
+        System.out.println();
+        System.out.println("   INSERT INTO users (email, password_hash, full_name, ...)");
+        System.out.println("   VALUES (");
+        System.out.println("       'admin@hargos.es',");
+        System.out.println("       '" + singleHash + "',");
+        System.out.println("       'Admin Hargos',");
+        System.out.println("       true, true, NOW(), NOW()");
+        System.out.println("   );");
+        System.out.println();
+        System.out.println("=".repeat(80));
     }
 }

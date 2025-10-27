@@ -17,6 +17,7 @@ import es.hargos.auth.entity.*;
 import es.hargos.auth.exception.DuplicateResourceException;
 import es.hargos.auth.exception.InvalidCredentialsException;
 import es.hargos.auth.exception.RateLimitExceededException;
+import es.hargos.auth.exception.ResourceNotFoundException;
 import es.hargos.auth.repository.UserRepository;
 import es.hargos.auth.repository.UserSessionRepository;
 import es.hargos.auth.repository.UserTenantRoleRepository;
@@ -287,7 +288,123 @@ public class AuthService {
      * Registrarse aceptando una invitación por email
      */
     @Transactional
-    public UserResponse registerFromInvitation(AcceptInvitationRequest request, HttpServletRequest httpRequest) {
+    /**
+     * Obtiene información de una invitación (tenant, email, etc.)
+     * Endpoint público para verificar invitación antes de login/registro
+     */
+    public java.util.Map<String, Object> getInvitationInfo(String token) {
+        InvitationEntity invitation = invitationService.getInvitationByToken(token);
+
+        if (!invitation.isValid()) {
+            throw new InvalidCredentialsException("La invitación ha expirado o ya fue usada");
+        }
+
+        // Verificar si el email ya existe
+        boolean emailExists = userRepository.existsByEmail(invitation.getEmail());
+
+        return java.util.Map.of(
+            "email", invitation.getEmail(),
+            "tenantName", invitation.getTenant().getName(),
+            "tenantId", invitation.getTenant().getId(),
+            "appName", invitation.getTenant().getApp().getName(),
+            "role", invitation.getRole(),
+            "emailExists", emailExists,
+            "expiresAt", invitation.getExpiresAt().toString()
+        );
+    }
+
+    /**
+     * Acepta invitación para un usuario YA EXISTENTE (autenticado)
+     * Solo asigna el tenant, no crea usuario nuevo
+     */
+    @Transactional
+    public UserResponse acceptInvitationForExistingUser(String token, String userEmail) {
+        // 1. Obtener y validar invitación
+        InvitationEntity invitation = invitationService.getInvitationByToken(token);
+
+        if (!invitation.isValid()) {
+            throw new InvalidCredentialsException("La invitación ha expirado o ya fue usada");
+        }
+
+        // 2. Verificar que el email de la invitación coincide con el usuario autenticado
+        if (!invitation.getEmail().equalsIgnoreCase(userEmail)) {
+            throw new InvalidCredentialsException(
+                "Esta invitación fue enviada a " + invitation.getEmail() +
+                " pero estás autenticado como " + userEmail
+            );
+        }
+
+        // 3. Obtener usuario
+        UserEntity user = userRepository.findByEmail(userEmail)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado"));
+
+        // 4. VALIDACIÓN: Verificar límite de cuentas del tenant
+        tenantLimitService.validateCanAddUser(invitation.getTenant());
+
+        // 5. Verificar si ya tiene rol en este tenant
+        boolean alreadyHasRole = userTenantRoleRepository.findByUserAndTenant(user, invitation.getTenant()).isPresent();
+        if (alreadyHasRole) {
+            throw new DuplicateResourceException("Ya perteneces a este tenant");
+        }
+
+        // 6. Asignar al tenant con el rol de la invitación
+        UserTenantRoleEntity userTenantRole = new UserTenantRoleEntity();
+        userTenantRole.setUser(user);
+        userTenantRole.setTenant(invitation.getTenant());
+        userTenantRole.setRole(invitation.getRole());
+        userTenantRoleRepository.save(userTenantRole);
+
+        // 7. Marcar invitación como aceptada
+        invitationService.markAsAccepted(invitation);
+
+        // 8. Devolver usuario actualizado con sus tenants
+        List<UserTenantRoleEntity> userTenantRoles = userTenantRoleRepository.findByUserWithTenantAndApp(user);
+        return mapToUserResponse(user, userTenantRoles);
+    }
+
+    /**
+     * Unirse a un tenant usando código de acceso para usuario YA EXISTENTE (autenticado)
+     * Similar a acceptInvitationForExistingUser pero con código de acceso
+     */
+    @Transactional
+    public UserResponse joinTenantWithAccessCode(String code, String userEmail) {
+        // 1. Obtener y validar código de acceso
+        AccessCodeEntity accessCode = accessCodeService.getAccessCodeByCode(code);
+
+        if (!accessCode.isValid()) {
+            throw new InvalidCredentialsException("El código de acceso es inválido, ha expirado o alcanzó el límite de usos");
+        }
+
+        // 2. Obtener usuario autenticado
+        UserEntity user = userRepository.findByEmail(userEmail)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado"));
+
+        // 3. VALIDACIÓN: Verificar límite de cuentas del tenant
+        tenantLimitService.validateCanAddUser(accessCode.getTenant());
+
+        // 4. Verificar si ya tiene rol en este tenant
+        boolean alreadyHasRole = userTenantRoleRepository.findByUserAndTenant(user, accessCode.getTenant()).isPresent();
+        if (alreadyHasRole) {
+            throw new DuplicateResourceException("Ya perteneces a este tenant");
+        }
+
+        // 5. Asignar al tenant con el rol del código de acceso
+        UserTenantRoleEntity userTenantRole = new UserTenantRoleEntity();
+        userTenantRole.setUser(user);
+        userTenantRole.setTenant(accessCode.getTenant());
+        userTenantRole.setRole(accessCode.getRole());
+        userTenantRoleRepository.save(userTenantRole);
+
+        // 6. Incrementar usos del código
+        accessCodeService.incrementUses(accessCode);
+
+        // 7. Devolver usuario actualizado con sus tenants
+        List<UserTenantRoleEntity> userTenantRoles = userTenantRoleRepository.findByUserWithTenantAndApp(user);
+        return mapToUserResponse(user, userTenantRoles);
+    }
+
+    @Transactional
+    public LoginResponse registerFromInvitation(AcceptInvitationRequest request, HttpServletRequest httpRequest) {
         // 1. Rate Limiting: Verificar límite de registros con invitación por IP
         String clientIp = getClientIp(httpRequest);
         if (!rateLimitService.allowRegisterWithInvitationAttempt(clientIp)) {
@@ -317,7 +434,7 @@ public class AuthService {
             throw new DuplicateResourceException("El email ya está registrado");
         }
 
-        // 5. Crear usuario
+        // 6. Crear usuario
         UserEntity user = new UserEntity();
         user.setEmail(invitation.getEmail());
         user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
@@ -327,19 +444,45 @@ public class AuthService {
 
         user = userRepository.save(user);
 
-        // 6. Asignar al tenant con el rol de la invitación
+        // 7. Asignar al tenant con el rol de la invitación
         UserTenantRoleEntity userTenantRole = new UserTenantRoleEntity();
         userTenantRole.setUser(user);
         userTenantRole.setTenant(invitation.getTenant());
         userTenantRole.setRole(invitation.getRole());
         userTenantRoleRepository.save(userTenantRole);
 
-        // 7. Marcar invitación como aceptada
+        // 8. Marcar invitación como aceptada
         invitationService.markAsAccepted(invitation);
 
-        // 8. Devolver usuario
-        List<UserTenantRoleEntity> roles = userTenantRoleRepository.findByUserWithTenantAndApp(user);
-        return mapToUserResponse(user, roles);
+        // 9. Auto-login: Generar tokens y sesión (igual que en login())
+        List<UserTenantRoleEntity> userTenantRoles = userTenantRoleRepository.findByUserWithTenantAndApp(user);
+
+        // Generar access token con JTI único
+        String[] tokenAndJti = jwtUtil.generateAccessTokenWithJti(user, userTenantRoles);
+        String accessToken = tokenAndJti[0];
+        String jti = tokenAndJti[1];
+
+        RefreshTokenEntity refreshToken = refreshTokenService.createRefreshToken(user);
+
+        // Crear nueva sesión con JTI
+        UserSessionEntity session = new UserSessionEntity();
+        session.setUser(user);
+        session.setRefreshToken(refreshToken);
+        session.setAccessTokenJti(jti);
+        session.setIpAddress(clientIp);
+        session.setUserAgent(httpRequest.getHeader("User-Agent"));
+        session.setDeviceType(UserSessionEntity.detectDeviceType(httpRequest.getHeader("User-Agent")));
+        session.setLastActivityAt(LocalDateTime.now());
+        session.setIsRevoked(false);
+        userSessionRepository.save(session);
+
+        // 10. Devolver LoginResponse con tokens
+        return new LoginResponse(
+                accessToken,
+                refreshToken.getToken(),
+                accessTokenExpiration / 1000, // Convert to seconds
+                mapToUserResponse(user, userTenantRoles)
+        );
     }
 
     /**

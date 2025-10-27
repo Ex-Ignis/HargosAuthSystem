@@ -99,6 +99,7 @@ public class TenantAdminController {
     }
 
     @PutMapping("/users/{id}/activate")
+    @Transactional
     public ResponseEntity<UserResponse> activateUser(
             @PathVariable Long id,
             Authentication authentication) {
@@ -111,6 +112,7 @@ public class TenantAdminController {
     }
 
     @PutMapping("/users/{id}/deactivate")
+    @Transactional
     public ResponseEntity<UserResponse> deactivateUser(
             @PathVariable Long id,
             Authentication authentication) {
@@ -123,6 +125,7 @@ public class TenantAdminController {
     }
 
     @DeleteMapping("/users/{id}")
+    @Transactional
     public ResponseEntity<MessageResponse> deleteUser(
             @PathVariable Long id,
             Authentication authentication) {
@@ -226,6 +229,7 @@ public class TenantAdminController {
      * Crear invitación por email para unirse a un tenant
      */
     @PostMapping("/invitations")
+    @Transactional
     public ResponseEntity<InvitationResponse> createInvitation(
             @Valid @RequestBody CreateInvitationRequest request,
             Authentication authentication) {
@@ -241,6 +245,7 @@ public class TenantAdminController {
      * Listar invitaciones de un tenant
      */
     @GetMapping("/tenants/{tenantId}/invitations")
+    @Transactional(readOnly = true)
     public ResponseEntity<List<InvitationResponse>> getInvitationsByTenant(
             @PathVariable Long tenantId,
             Authentication authentication) {
@@ -256,6 +261,7 @@ public class TenantAdminController {
      * Listar invitaciones pendientes de un tenant
      */
     @GetMapping("/tenants/{tenantId}/invitations/pending")
+    @Transactional(readOnly = true)
     public ResponseEntity<List<InvitationResponse>> getPendingInvitationsByTenant(
             @PathVariable Long tenantId,
             Authentication authentication) {
@@ -271,6 +277,7 @@ public class TenantAdminController {
      * Eliminar invitación
      */
     @DeleteMapping("/invitations/{invitationId}")
+    @Transactional
     public ResponseEntity<MessageResponse> deleteInvitation(
             @PathVariable Long invitationId,
             Authentication authentication) {
@@ -291,6 +298,7 @@ public class TenantAdminController {
      * Generar código de acceso para un tenant
      */
     @PostMapping("/access-codes")
+    @Transactional
     public ResponseEntity<AccessCodeResponse> createAccessCode(
             @Valid @RequestBody CreateAccessCodeRequest request,
             Authentication authentication) {
@@ -306,6 +314,7 @@ public class TenantAdminController {
      * Listar códigos de acceso de un tenant
      */
     @GetMapping("/tenants/{tenantId}/access-codes")
+    @Transactional(readOnly = true)
     public ResponseEntity<List<AccessCodeResponse>> getAccessCodesByTenant(
             @PathVariable Long tenantId,
             Authentication authentication) {
@@ -321,6 +330,7 @@ public class TenantAdminController {
      * Listar códigos de acceso activos de un tenant
      */
     @GetMapping("/tenants/{tenantId}/access-codes/active")
+    @Transactional(readOnly = true)
     public ResponseEntity<List<AccessCodeResponse>> getActiveAccessCodesByTenant(
             @PathVariable Long tenantId,
             Authentication authentication) {
@@ -336,6 +346,7 @@ public class TenantAdminController {
      * Desactivar código de acceso
      */
     @PutMapping("/access-codes/{accessCodeId}/deactivate")
+    @Transactional
     public ResponseEntity<MessageResponse> deactivateAccessCode(
             @PathVariable Long accessCodeId,
             Authentication authentication) {
@@ -354,6 +365,7 @@ public class TenantAdminController {
      * Eliminar código de acceso
      */
     @DeleteMapping("/access-codes/{accessCodeId}")
+    @Transactional
     public ResponseEntity<MessageResponse> deleteAccessCode(
             @PathVariable Long accessCodeId,
             Authentication authentication) {
