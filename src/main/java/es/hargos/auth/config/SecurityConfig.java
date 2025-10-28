@@ -57,8 +57,15 @@ public class SecurityConfig {
                         // Ritrack endpoints - public (called from external applications)
                         .requestMatchers("/api/ritrack/**").permitAll()
 
+                        // Stripe public endpoints
+                        .requestMatchers("/api/stripe/webhook").permitAll()  // Webhook (Stripe calls this)
+                        .requestMatchers("/api/stripe/checkout/create-session").permitAll()  // Checkout (self-service)
+
                         // Purchase endpoints - require authentication (user must be logged in to purchase)
                         .requestMatchers("/api/purchase/**").authenticated()
+
+                        // Stripe management endpoints - require authentication
+                        .requestMatchers("/api/stripe/**").authenticated()
 
                         // Session management endpoints - require authentication
                         .requestMatchers("/api/sessions/**").authenticated()
