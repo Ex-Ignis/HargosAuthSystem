@@ -126,15 +126,44 @@ public class TenantAdminController {
 
     @DeleteMapping("/users/{id}")
     @Transactional
-    public ResponseEntity<MessageResponse> deleteUser(
+    public ResponseEntity<MessageResponse> removeUserFromMyTenants(
             @PathVariable Long id,
             Authentication authentication) {
 
         UserEntity currentUser = getUserFromAuthentication(authentication);
         validateUserAccessByTenantAdmin(currentUser, id);
 
-        userService.deleteUser(id);
-        return ResponseEntity.ok(new MessageResponse("Usuario eliminado exitosamente"));
+        // Obtener los tenants que este admin gestiona
+        List<UserTenantRoleEntity> adminTenants = userTenantRoleRepository
+                .findByUserAndRole(currentUser, "TENANT_ADMIN");
+
+        // Obtener el usuario a eliminar
+        UserEntity targetUser = userRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado"));
+
+        // Eliminar al usuario solo de los tenants que este admin gestiona
+        List<UserTenantRoleEntity> targetUserTenants = userTenantRoleRepository.findByUser(targetUser);
+
+        int tenantsRemoved = 0;
+        for (UserTenantRoleEntity adminTenant : adminTenants) {
+            Long managedTenantId = adminTenant.getTenant().getId();
+
+            // Verificar si el usuario pertenece a este tenant
+            boolean belongsToTenant = targetUserTenants.stream()
+                    .anyMatch(utr -> utr.getTenant().getId().equals(managedTenantId));
+
+            if (belongsToTenant) {
+                userService.removeUserFromTenant(id, managedTenantId);
+                tenantsRemoved++;
+            }
+        }
+
+        if (tenantsRemoved == 0) {
+            throw new ResourceNotFoundException("El usuario no pertenece a ninguno de tus tenants");
+        }
+
+        return ResponseEntity.ok(new MessageResponse(
+                "Usuario eliminado de " + tenantsRemoved + " tenant(s) exitosamente"));
     }
 
     // ==================== TENANT INFORMATION ====================

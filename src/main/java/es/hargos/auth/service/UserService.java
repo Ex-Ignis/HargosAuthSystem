@@ -134,6 +134,32 @@ public class UserService {
         userRepository.delete(user);
     }
 
+    /**
+     * Elimina la relación de un usuario con un tenant específico.
+     * NO elimina al usuario de la base de datos, solo su asociación con el tenant.
+     *
+     * @param userId ID del usuario
+     * @param tenantId ID del tenant del cual se eliminará al usuario
+     * @throws ResourceNotFoundException si el usuario o tenant no existen
+     * @throws IllegalStateException si el usuario no pertenece a ese tenant
+     */
+    @Transactional
+    public void removeUserFromTenant(Long userId, Long tenantId) {
+        UserEntity user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado"));
+
+        TenantEntity tenant = tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant no encontrado"));
+
+        UserTenantRoleEntity userTenantRole = userTenantRoleRepository
+                .findByUserAndTenant(user, tenant)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "El usuario no pertenece a este tenant"));
+
+        // Solo eliminar la relación, no el usuario
+        userTenantRoleRepository.delete(userTenantRole);
+    }
+
     @Transactional
     public UserResponse updateUserStatus(Long userId, boolean isActive) {
         UserEntity user = userRepository.findById(userId)
