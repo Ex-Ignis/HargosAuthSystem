@@ -37,10 +37,10 @@ public class RitrackController {
         TenantEntity tenant = tenantRepository.findById(request.getTenantId())
                 .orElseThrow(() -> new ResourceNotFoundException("Tenant no encontrado"));
 
-        // Verificar que el tenant tiene configuración de Riders Management
+        // Verificar que el tenant tiene configuración de RiTrack
         if (tenant.getRidersConfig() == null) {
             throw new IllegalStateException("El tenant '" + tenant.getName() +
-                "' no tiene configuración de Riders Management");
+                "' no tiene configuración de RiTrack");
         }
 
         // Si rider_limit es null = ilimitado

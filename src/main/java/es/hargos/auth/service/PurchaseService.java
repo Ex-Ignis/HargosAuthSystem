@@ -80,7 +80,7 @@ public class PurchaseService {
 
     private void createTenantConfig(TenantEntity tenant, String appName, PurchaseProductRequest request) {
         switch (appName) {
-            case "Riders Management":
+            case "RiTrack":
                 if (request.getRidersConfig() != null) {
                     TenantRidersConfigEntity ridersConfig = new TenantRidersConfigEntity();
                     ridersConfig.setTenant(tenant);
@@ -149,7 +149,7 @@ public class PurchaseService {
         // Cargar configuración específica si existe
         String appName = tenant.getApp().getName();
 
-        if ("Riders Management".equals(appName) && tenant.getRidersConfig() != null) {
+        if ("RiTrack".equals(appName) && tenant.getRidersConfig() != null) {
             RidersConfigDTO ridersConfig = new RidersConfigDTO();
             ridersConfig.setRiderLimit(tenant.getRidersConfig().getRiderLimit());
             ridersConfig.setCurrentRiderCount(null);

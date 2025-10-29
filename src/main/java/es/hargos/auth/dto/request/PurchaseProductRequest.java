@@ -14,7 +14,7 @@ public class PurchaseProductRequest {
     private String organizationDescription;
 
     @NotNull(message = "El ID de la app es obligatorio")
-    private Long appId; // 1=SYSTEM, 2=Riders Management, 3=Warehouse, 4=Fleet
+    private Long appId; // 1=SYSTEM, 2=RiTrack, 3=Warehouse, 4=Fleet
 
     @NotBlank(message = "El nombre del tenant es obligatorio")
     private String tenantName;
@@ -25,7 +25,7 @@ public class PurchaseProductRequest {
     @Min(value = 1, message = "El l\u00edmite de cuentas debe ser al menos 1")
     private Integer accountLimit;
 
-    // Configuraci\u00f3n espec\u00edfica para Riders Management
+    // Configuraci\u00f3n espec\u00edfica para RiTrack
     private RidersConfigRequest ridersConfig;
 
     // Configuraci\u00f3n espec\u00edfica para Warehouse Management

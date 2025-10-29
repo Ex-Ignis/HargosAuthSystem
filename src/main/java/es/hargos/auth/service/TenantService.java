@@ -97,7 +97,7 @@ public class TenantService {
         // Cargar configuración específica según el app
         String appName = tenant.getApp().getName();
 
-        if ("Riders Management".equals(appName)) {
+        if ("RiTrack".equals(appName)) {
             tenantRidersConfigRepository.findByTenantId(tenant.getId())
                     .ifPresent(config -> {
                         RidersConfigDTO ridersConfig = new RidersConfigDTO();
@@ -164,16 +164,16 @@ public class TenantService {
     }
 
     /**
-     * Actualiza la configuración de Riders Management de un tenant
+     * Actualiza la configuración de RiTrack de un tenant
      */
     @Transactional
     public TenantResponse updateRidersConfig(Long tenantId, UpdateRidersConfigRequest request) {
         TenantEntity tenant = tenantRepository.findById(tenantId)
                 .orElseThrow(() -> new ResourceNotFoundException("Tenant no encontrado"));
 
-        // Verificar que el tenant sea de tipo Riders Management
-        if (!"Riders Management".equals(tenant.getApp().getName())) {
-            throw new IllegalStateException("El tenant no es de tipo Riders Management");
+        // Verificar que el tenant sea de tipo RiTrack
+        if (!"RiTrack".equals(tenant.getApp().getName())) {
+            throw new IllegalStateException("El tenant no es de tipo RiTrack");
         }
 
         // Buscar o crear configuración
