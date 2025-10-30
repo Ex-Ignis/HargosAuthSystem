@@ -260,57 +260,64 @@ public class StripeController {
 
         // Handle the event
         try {
-            StripeObject stripeObject = event.getData().getObject();
-
             switch (event.getType()) {
                 case "checkout.session.completed":
-                    if (stripeObject instanceof Session) {
-                        Session session = (Session) stripeObject;
+                    Session session = (Session) event.getDataObjectDeserializer()
+                            .getObject()
+                            .orElse(null);
+                    if (session != null) {
                         stripeService.handleCheckoutCompleted(session);
                         log.info("Successfully processed checkout.session.completed");
                     } else {
-                        log.warn("checkout.session.completed: object is not a Session, it's {}",
-                                stripeObject != null ? stripeObject.getClass().getName() : "null");
+                        log.warn("checkout.session.completed: could not deserialize Session object");
                     }
                     break;
 
                 case "customer.subscription.updated":
-                    if (stripeObject instanceof Subscription) {
-                        Subscription subscriptionUpdated = (Subscription) stripeObject;
+                    Subscription subscriptionUpdated = (Subscription) event.getDataObjectDeserializer()
+                            .getObject()
+                            .orElse(null);
+                    if (subscriptionUpdated != null) {
                         stripeService.handleSubscriptionUpdated(subscriptionUpdated);
                         log.info("Successfully processed customer.subscription.updated");
                     } else {
-                        log.warn("customer.subscription.updated: object is not a Subscription");
+                        log.warn("customer.subscription.updated: could not deserialize Subscription object");
                     }
                     break;
 
                 case "customer.subscription.deleted":
-                    if (stripeObject instanceof Subscription) {
-                        Subscription subscriptionDeleted = (Subscription) stripeObject;
+                    Subscription subscriptionDeleted = (Subscription) event.getDataObjectDeserializer()
+                            .getObject()
+                            .orElse(null);
+                    if (subscriptionDeleted != null) {
                         stripeService.handleSubscriptionDeleted(subscriptionDeleted);
                         log.info("Successfully processed customer.subscription.deleted");
                     } else {
-                        log.warn("customer.subscription.deleted: object is not a Subscription");
+                        log.warn("customer.subscription.deleted: could not deserialize Subscription object");
                     }
                     break;
 
                 case "invoice.payment_succeeded":
-                    if (stripeObject instanceof Invoice) {
-                        Invoice invoiceSucceeded = (Invoice) stripeObject;
+                    Invoice invoiceSucceeded = (Invoice) event.getDataObjectDeserializer()
+                            .getObject()
+                            .orElse(null);
+                    if (invoiceSucceeded != null) {
                         stripeService.handleInvoicePaymentSucceeded(invoiceSucceeded);
                         log.info("Successfully processed invoice.payment_succeeded");
                     } else {
-                        log.warn("invoice.payment_succeeded: object is not an Invoice");
+                        log.warn("invoice.payment_succeeded: could not deserialize Invoice object");
                     }
                     break;
 
                 case "invoice.payment_failed":
-                    if (stripeObject instanceof Invoice) {
-                        Invoice invoiceFailed = (Invoice) stripeObject;
+                    Invoice invoiceFailed = (Invoice) event.getDataObjectDeserializer()
+                            .getObject()
+                            .orElse(null);
+                    if (invoiceFailed != null) {
                         stripeService.handleInvoicePaymentFailed(invoiceFailed);
                         log.info("Successfully processed invoice.payment_failed");
                     } else {
-                        log.warn("invoice.payment_failed: object is not an Invoice");
+                        log.warn("invoice.payment_failed: could not deserialize Invoice object");
                     }
                     break;
 

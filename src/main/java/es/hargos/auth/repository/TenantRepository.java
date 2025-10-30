@@ -15,6 +15,7 @@ public interface TenantRepository extends JpaRepository<TenantEntity, Long> {
     List<TenantEntity> findByOrganization(OrganizationEntity organization);
     List<TenantEntity> findByAppAndOrganization(AppEntity app, OrganizationEntity organization);
     Optional<TenantEntity> findByAppAndName(AppEntity app, String name);
+    Optional<TenantEntity> findByAppAndOrganizationAndName(AppEntity app, OrganizationEntity organization, String name);
     boolean existsByAppAndName(AppEntity app, String name);
     boolean existsByAppAndOrganizationAndName(AppEntity app, OrganizationEntity organization, String name);
 }

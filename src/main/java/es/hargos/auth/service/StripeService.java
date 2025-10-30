@@ -349,8 +349,7 @@ public class StripeService {
             UserTenantRoleEntity userTenantRole = UserTenantRoleEntity.builder()
                     .user(user)
                     .tenant(tenant)
-                    .role(Role.TENANT_ADMIN)
-                    .assignedAt(LocalDateTime.now())
+                    .role(Role.TENANT_ADMIN.name())
                     .build();
             userTenantRoleRepository.save(userTenantRole);
             log.info("Assigned user {} as TENANT_ADMIN for tenant: {}", user.getEmail(), tenantName);
