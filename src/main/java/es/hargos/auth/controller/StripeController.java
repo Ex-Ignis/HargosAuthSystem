@@ -5,6 +5,7 @@ import com.stripe.model.*;
 import com.stripe.model.checkout.Session;
 import com.stripe.net.Webhook;
 import es.hargos.auth.dto.request.CreateCheckoutSessionRequest;
+import es.hargos.auth.dto.request.CreateOnboardingCheckoutRequest;
 import es.hargos.auth.dto.request.UpdateSubscriptionQuantitiesRequest;
 import es.hargos.auth.dto.response.CheckoutSessionResponse;
 import es.hargos.auth.dto.response.MessageResponse;
@@ -20,6 +21,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -66,6 +68,45 @@ public class StripeController {
                 checkoutUrl,
                 String.format("Sesión de checkout creada: %d cuentas + %d riders. Total calculado automáticamente por Stripe.",
                               request.getAccountQuantity(), request.getRidersQuantity())
+        );
+
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Create a Stripe Checkout Session for new customer onboarding
+     * This validates tenant creation BEFORE charging, then creates everything on webhook
+     *
+     * NO authentication required - allows anonymous users to start checkout
+     * User will be linked via email stored in metadata
+     */
+    @PostMapping("/checkout/onboarding")
+    public ResponseEntity<CheckoutSessionResponse> createOnboardingCheckoutSession(
+            @Valid @RequestBody CreateOnboardingCheckoutRequest request,
+            Authentication authentication) {
+
+        String userEmail = authentication != null ? authentication.getName() : null;
+
+        if (userEmail == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(new CheckoutSessionResponse(null, "Usuario no autenticado"));
+        }
+
+        log.info("Creating onboarding checkout for user: {}, org: {}, tenant: {}",
+                userEmail, request.getOrganizationName(), request.getTenantName());
+
+        String checkoutUrl = stripeService.createOnboardingCheckoutSession(
+                userEmail,
+                request
+        );
+
+        CheckoutSessionResponse response = new CheckoutSessionResponse(
+                checkoutUrl,
+                String.format("Sesión de onboarding creada: %s - %s (%d cuentas, %d riders)",
+                        request.getOrganizationName(),
+                        request.getTenantName(),
+                        request.getAccountQuantity(),
+                        request.getRidersQuantity())
         );
 
         return ResponseEntity.ok(response);

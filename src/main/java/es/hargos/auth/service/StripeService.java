@@ -6,17 +6,11 @@ import com.stripe.model.*;
 import com.stripe.model.checkout.Session;
 import com.stripe.param.*;
 import com.stripe.param.checkout.SessionCreateParams;
-import es.hargos.auth.entity.OrganizationEntity;
-import es.hargos.auth.entity.StripePaymentHistoryEntity;
-import es.hargos.auth.entity.StripeSubscriptionEntity;
-import es.hargos.auth.entity.TenantEntity;
-import es.hargos.auth.entity.TenantRidersConfigEntity;
+import es.hargos.auth.dto.request.CreateOnboardingCheckoutRequest;
+import es.hargos.auth.entity.*;
+import es.hargos.auth.exception.DuplicateResourceException;
 import es.hargos.auth.exception.ResourceNotFoundException;
-import es.hargos.auth.repository.OrganizationRepository;
-import es.hargos.auth.repository.StripePaymentHistoryRepository;
-import es.hargos.auth.repository.StripeSubscriptionRepository;
-import es.hargos.auth.repository.TenantRepository;
-import es.hargos.auth.repository.TenantRidersConfigRepository;
+import es.hargos.auth.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -46,6 +40,9 @@ public class StripeService {
     private final TenantRepository tenantRepository;
     private final OrganizationRepository organizationRepository;
     private final TenantRidersConfigRepository tenantRidersConfigRepository;
+    private final UserRepository userRepository;
+    private final AppRepository appRepository;
+    private final UserTenantRoleRepository userTenantRoleRepository;
 
     @Value("${stripe.api-key}")
     private String stripeApiKey;
@@ -142,11 +139,106 @@ public class StripeService {
         }
     }
 
+    /**
+     * Create a Stripe Checkout Session for onboarding
+     * Validates that tenant can be created BEFORE charging the customer
+     *
+     * @param userEmail Email of the user making the purchase
+     * @param request Onboarding details
+     * @return Stripe Checkout URL
+     */
+    @Transactional
+    public String createOnboardingCheckoutSession(String userEmail, CreateOnboardingCheckoutRequest request) {
+        try {
+            // 1. Get and validate user
+            UserEntity user = userRepository.findByEmail(userEmail)
+                    .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado"));
+
+            // 2. Validate app exists
+            AppEntity app = appRepository.findById(request.getAppId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Aplicación no encontrada"));
+
+            // 3. Validate organization name can be used
+            Optional<OrganizationEntity> existingOrg = organizationRepository.findByName(request.getOrganizationName());
+            if (existingOrg.isPresent() && !existingOrg.get().getIsActive()) {
+                throw new IllegalStateException("La organización '" + request.getOrganizationName() + "' existe pero está inactiva");
+            }
+
+            // 4. Validate tenant doesn't exist
+            if (existingOrg.isPresent()) {
+                boolean tenantExists = tenantRepository.existsByAppAndOrganizationAndName(
+                        app,
+                        existingOrg.get(),
+                        request.getTenantName()
+                );
+
+                if (tenantExists) {
+                    throw new DuplicateResourceException(
+                            "Ya existe un tenant '" + request.getTenantName() +
+                            "' para la app '" + app.getName() +
+                            "' en la organización '" + request.getOrganizationName() + "'"
+                    );
+                }
+            }
+
+            // 5. Create metadata to store onboarding information
+            Map<String, String> metadata = new HashMap<>();
+            metadata.put("onboarding", "true");
+            metadata.put("user_id", user.getId().toString());
+            metadata.put("user_email", user.getEmail());
+            metadata.put("organization_name", request.getOrganizationName());
+            metadata.put("tenant_name", request.getTenantName());
+            metadata.put("tenant_description", request.getTenantDescription() != null ? request.getTenantDescription() : "");
+            metadata.put("app_id", request.getAppId().toString());
+            metadata.put("app_name", app.getName());
+            metadata.put("account_quantity", request.getAccountQuantity().toString());
+            metadata.put("riders_quantity", request.getRidersQuantity().toString());
+
+            // 6. Build checkout session params
+            SessionCreateParams params = SessionCreateParams.builder()
+                    .setMode(SessionCreateParams.Mode.SUBSCRIPTION)
+                    .setSuccessUrl(successUrl + "?session_id={CHECKOUT_SESSION_ID}")
+                    .setCancelUrl(cancelUrl)
+                    // Line Item 1: User Accounts (graduated pricing)
+                    .addLineItem(
+                            SessionCreateParams.LineItem.builder()
+                                    .setPrice(accountsPriceId)
+                                    .setQuantity(request.getAccountQuantity().longValue())
+                                    .build()
+                    )
+                    // Line Item 2: Riders (graduated pricing)
+                    .addLineItem(
+                            SessionCreateParams.LineItem.builder()
+                                    .setPrice(ridersPriceId)
+                                    .setQuantity(request.getRidersQuantity().longValue())
+                                    .build()
+                    )
+                    .putAllMetadata(metadata)
+                    .setCustomerEmail(user.getEmail())
+                    .setAllowPromotionCodes(true)
+                    .setBillingAddressCollection(SessionCreateParams.BillingAddressCollection.REQUIRED)
+                    .build();
+
+            // 7. Create session with Stripe API
+            Session session = Session.create(params);
+
+            log.info("Created onboarding Stripe Checkout Session: {} for user: {}",
+                     session.getId(), userEmail);
+
+            return session.getUrl();
+
+        } catch (StripeException e) {
+            log.error("Error creating Stripe onboarding checkout session", e);
+            throw new RuntimeException("Error al crear la sesión de pago: " + e.getMessage());
+        }
+    }
+
     // ==================== SUBSCRIPTION MANAGEMENT ====================
 
     /**
      * Handle successful checkout completion
      * Called by webhook when checkout.session.completed event is received
+     * Routes to onboarding flow or existing tenant update flow
      */
     @Transactional
     public void handleCheckoutCompleted(Session session) {
@@ -157,28 +249,156 @@ public class StripeService {
                 return;
             }
 
-            // Get metadata
-            Long organizationId = Long.parseLong(session.getMetadata().get("organization_id"));
-            Long tenantId = Long.parseLong(session.getMetadata().get("tenant_id"));
-            Integer accountQuantity = Integer.parseInt(session.getMetadata().get("account_quantity"));
-            Integer ridersQuantity = Integer.parseInt(session.getMetadata().get("riders_quantity"));
+            Map<String, String> metadata = session.getMetadata();
 
-            // Retrieve full subscription details from Stripe
-            Subscription stripeSubscription = Subscription.retrieve(subscriptionId);
+            // Check if this is an onboarding session (new customer) or update (existing tenant)
+            boolean isOnboarding = "true".equals(metadata.get("onboarding"));
 
-            // Save subscription to database
-            saveSubscriptionFromStripe(stripeSubscription, organizationId, tenantId);
-
-            // Update tenant limits based on purchased quantities
-            updateTenantLimits(tenantId, accountQuantity, ridersQuantity);
-
-            log.info("Successfully processed checkout completion for tenant: {} ({} accounts, {} riders)",
-                     tenantId, accountQuantity, ridersQuantity);
+            if (isOnboarding) {
+                // NEW CUSTOMER FLOW: Create everything from scratch
+                handleOnboardingCheckout(session, subscriptionId);
+            } else {
+                // EXISTING TENANT FLOW: Update limits only
+                handleExistingTenantCheckout(session, subscriptionId);
+            }
 
         } catch (Exception e) {
             log.error("Error handling checkout completion", e);
             throw new RuntimeException("Error al procesar el pago completado: " + e.getMessage());
         }
+    }
+
+    /**
+     * Handle checkout for NEW customers (onboarding flow)
+     * Creates organization, tenant, config, and assigns user as TENANT_ADMIN
+     */
+    private void handleOnboardingCheckout(Session session, String subscriptionId) throws StripeException {
+        Map<String, String> metadata = session.getMetadata();
+
+        Long userId = Long.parseLong(metadata.get("user_id"));
+        String organizationName = metadata.get("organization_name");
+        String tenantName = metadata.get("tenant_name");
+        String tenantDescription = metadata.get("tenant_description");
+        Long appId = Long.parseLong(metadata.get("app_id"));
+        Integer accountQuantity = Integer.parseInt(metadata.get("account_quantity"));
+        Integer ridersQuantity = Integer.parseInt(metadata.get("riders_quantity"));
+
+        // 1. Get user and app
+        UserEntity user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado"));
+
+        AppEntity app = appRepository.findById(appId)
+                .orElseThrow(() -> new ResourceNotFoundException("Aplicación no encontrada"));
+
+        // 2. Create or get organization
+        OrganizationEntity organization = organizationRepository
+                .findByName(organizationName)
+                .orElseGet(() -> {
+                    OrganizationEntity newOrg = new OrganizationEntity();
+                    newOrg.setName(organizationName);
+                    newOrg.setIsActive(true);
+                    newOrg.setCreatedAt(LocalDateTime.now());
+                    return organizationRepository.save(newOrg);
+                });
+
+        // 3. Create tenant (or reuse if webhook is a retry)
+        Optional<TenantEntity> existingTenant = tenantRepository
+                .findByAppAndOrganizationAndName(app, organization, tenantName);
+
+        TenantEntity tenant;
+        if (existingTenant.isPresent()) {
+            log.info("Tenant '{}' already exists (webhook retry detected), reusing existing tenant",
+                    tenantName);
+            tenant = existingTenant.get();
+        } else {
+            tenant = new TenantEntity();
+            tenant.setApp(app);
+            tenant.setOrganization(organization);
+            tenant.setName(tenantName);
+            tenant.setDescription(tenantDescription);
+            tenant.setAccountLimit(accountQuantity);
+            tenant.setIsActive(true);
+            tenant.setCreatedAt(LocalDateTime.now());
+            tenant = tenantRepository.save(tenant);
+            log.info("Created new tenant: {}", tenantName);
+        }
+
+        // 4. Create tenant configuration based on app type (if not exists)
+        if ("Riders Management".equals(app.getName())) {
+            if (tenant.getRidersConfig() == null) {
+                TenantRidersConfigEntity ridersConfig = new TenantRidersConfigEntity();
+                ridersConfig.setTenant(tenant);
+                ridersConfig.setRiderLimit(ridersQuantity);
+                ridersConfig.setDeliveryZones(0);
+                ridersConfig.setMaxDailyDeliveries(null);
+                ridersConfig.setRealTimeTracking(true);
+                ridersConfig.setSmsNotifications(false);
+                tenantRidersConfigRepository.save(ridersConfig);
+                log.info("Created riders configuration for tenant: {}", tenantName);
+            } else {
+                log.info("Riders configuration already exists for tenant: {} (webhook retry)", tenantName);
+            }
+        }
+        // TODO: Add other app types (Warehouse, Fleet) when needed
+
+        // 5. Assign user as TENANT_ADMIN (if not already assigned)
+        Optional<UserTenantRoleEntity> existingAssignment = userTenantRoleRepository
+                .findByUserAndTenant(user, tenant);
+
+        if (existingAssignment.isEmpty()) {
+            UserTenantRoleEntity userTenantRole = UserTenantRoleEntity.builder()
+                    .user(user)
+                    .tenant(tenant)
+                    .role(Role.TENANT_ADMIN)
+                    .assignedAt(LocalDateTime.now())
+                    .build();
+            userTenantRoleRepository.save(userTenantRole);
+            log.info("Assigned user {} as TENANT_ADMIN for tenant: {}", user.getEmail(), tenantName);
+        } else {
+            log.info("User {} already assigned to tenant: {} (webhook retry)", user.getEmail(), tenantName);
+        }
+
+        // 6. Retrieve full subscription details from Stripe
+        Subscription stripeSubscription = Subscription.retrieve(subscriptionId);
+
+        // 7. Save subscription to database (if not already exists)
+        Optional<StripeSubscriptionEntity> existingSubscription =
+                subscriptionRepository.findByStripeSubscriptionId(subscriptionId);
+
+        if (existingSubscription.isEmpty()) {
+            saveSubscriptionFromStripe(stripeSubscription, organization.getId(), tenant.getId());
+            log.info("Saved subscription {} for tenant: {}", subscriptionId, tenantName);
+        } else {
+            log.info("Subscription {} already exists (webhook retry)", subscriptionId);
+        }
+
+        log.info("Successfully completed onboarding for user: {}, tenant: {} ({} accounts, {} riders)",
+                 user.getEmail(), tenant.getName(), accountQuantity, ridersQuantity);
+    }
+
+    /**
+     * Handle checkout for EXISTING tenants (upgrade/update flow)
+     * Only updates limits, doesn't create new entities
+     */
+    private void handleExistingTenantCheckout(Session session, String subscriptionId) throws StripeException {
+        Map<String, String> metadata = session.getMetadata();
+
+        Long organizationId = Long.parseLong(metadata.get("organization_id"));
+        Long tenantId = Long.parseLong(metadata.get("tenant_id"));
+        Integer accountQuantity = Integer.parseInt(metadata.get("account_quantity"));
+        Integer ridersQuantity = Integer.parseInt(metadata.get("riders_quantity"));
+
+        // Retrieve full subscription details from Stripe
+        Subscription stripeSubscription = Subscription.retrieve(subscriptionId);
+
+        // Save subscription to database
+        saveSubscriptionFromStripe(stripeSubscription, organizationId, tenantId);
+
+        // Update tenant limits based on purchased quantities
+        updateTenantLimits(tenantId, accountQuantity, ridersQuantity);
+
+        log.info("Successfully processed checkout for existing tenant: {} ({} accounts, {} riders)",
+                 tenantId, accountQuantity, ridersQuantity);
     }
 
     /**
