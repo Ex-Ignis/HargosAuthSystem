@@ -25,6 +25,15 @@ public interface StripeSubscriptionRepository extends JpaRepository<StripeSubscr
     Optional<StripeSubscriptionEntity> findByTenantId(Long tenantId);
 
     /**
+     * Find subscription by tenant ID with tenant and organization eagerly loaded
+     */
+    @Query("SELECT s FROM StripeSubscriptionEntity s " +
+           "LEFT JOIN FETCH s.tenant t " +
+           "LEFT JOIN FETCH s.organization o " +
+           "WHERE s.tenant.id = :tenantId")
+    Optional<StripeSubscriptionEntity> findByTenantIdWithDetails(Long tenantId);
+
+    /**
      * Find subscription by Stripe subscription ID
      */
     Optional<StripeSubscriptionEntity> findByStripeSubscriptionId(String stripeSubscriptionId);

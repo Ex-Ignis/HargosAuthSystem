@@ -336,7 +336,7 @@ public class StripeService {
                 TenantRidersConfigEntity ridersConfig = new TenantRidersConfigEntity();
                 ridersConfig.setTenant(tenant);
                 ridersConfig.setRiderLimit(ridersQuantity);
-                ridersConfig.setDeliveryZones(0);
+                ridersConfig.setDeliveryZones(1); // Default to 1 zone (constraint requires > 0 or NULL)
                 ridersConfig.setMaxDailyDeliveries(null);
                 ridersConfig.setRealTimeTracking(true);
                 ridersConfig.setSmsNotifications(false);
@@ -690,7 +690,7 @@ public class StripeService {
      */
     @Transactional(readOnly = true)
     public StripeSubscriptionEntity getSubscriptionByTenantId(Long tenantId) {
-        return subscriptionRepository.findByTenantId(tenantId)
+        return subscriptionRepository.findByTenantIdWithDetails(tenantId)
                 .orElseThrow(() -> new ResourceNotFoundException("Suscripción no encontrada para el tenant"));
     }
 

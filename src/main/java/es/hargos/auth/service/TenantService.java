@@ -97,7 +97,7 @@ public class TenantService {
         // Cargar configuración específica según el app
         String appName = tenant.getApp().getName();
 
-        if ("RiTrack".equals(appName)) {
+        if ("Riders Management".equals(appName)) {
             tenantRidersConfigRepository.findByTenantId(tenant.getId())
                     .ifPresent(config -> {
                         RidersConfigDTO ridersConfig = new RidersConfigDTO();

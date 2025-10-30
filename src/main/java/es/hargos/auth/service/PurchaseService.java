@@ -80,7 +80,7 @@ public class PurchaseService {
 
     private void createTenantConfig(TenantEntity tenant, String appName, PurchaseProductRequest request) {
         switch (appName) {
-            case "RiTrack":
+            case "Riders Management":
                 if (request.getRidersConfig() != null) {
                     TenantRidersConfigEntity ridersConfig = new TenantRidersConfigEntity();
                     ridersConfig.setTenant(tenant);
@@ -147,35 +147,45 @@ public class PurchaseService {
         response.setCreatedAt(tenant.getCreatedAt());
 
         // Cargar configuración específica si existe
+        // IMPORTANTE: Usamos los repositorios para evitar problemas con lazy loading
         String appName = tenant.getApp().getName();
 
-        if ("RiTrack".equals(appName) && tenant.getRidersConfig() != null) {
-            RidersConfigDTO ridersConfig = new RidersConfigDTO();
-            ridersConfig.setRiderLimit(tenant.getRidersConfig().getRiderLimit());
-            ridersConfig.setCurrentRiderCount(null);
-            ridersConfig.setDeliveryZones(tenant.getRidersConfig().getDeliveryZones());
-            ridersConfig.setMaxDailyDeliveries(tenant.getRidersConfig().getMaxDailyDeliveries());
-            ridersConfig.setRealTimeTracking(tenant.getRidersConfig().getRealTimeTracking());
-            ridersConfig.setSmsNotifications(tenant.getRidersConfig().getSmsNotifications());
-            response.setRidersConfig(ridersConfig);
-        } else if ("Warehouse Management".equals(appName) && tenant.getWarehouseConfig() != null) {
-            WarehouseConfigDTO warehouseConfig = new WarehouseConfigDTO();
-            warehouseConfig.setWarehouseCapacityM3(tenant.getWarehouseConfig().getWarehouseCapacityM3());
-            warehouseConfig.setLoadingDocks(tenant.getWarehouseConfig().getLoadingDocks());
-            warehouseConfig.setInventorySkuLimit(tenant.getWarehouseConfig().getInventorySkuLimit());
-            warehouseConfig.setBarcodeScanning(tenant.getWarehouseConfig().getBarcodeScanning());
-            warehouseConfig.setRfidEnabled(tenant.getWarehouseConfig().getRfidEnabled());
-            warehouseConfig.setTemperatureControlledZones(tenant.getWarehouseConfig().getTemperatureControlledZones());
-            response.setWarehouseConfig(warehouseConfig);
-        } else if ("Fleet Management".equals(appName) && tenant.getFleetConfig() != null) {
-            FleetConfigDTO fleetConfig = new FleetConfigDTO();
-            fleetConfig.setVehicleLimit(tenant.getFleetConfig().getVehicleLimit());
-            fleetConfig.setGpsTracking(tenant.getFleetConfig().getGpsTracking());
-            fleetConfig.setMaintenanceAlerts(tenant.getFleetConfig().getMaintenanceAlerts());
-            fleetConfig.setFuelMonitoring(tenant.getFleetConfig().getFuelMonitoring());
-            fleetConfig.setDriverScoring(tenant.getFleetConfig().getDriverScoring());
-            fleetConfig.setTelematicsEnabled(tenant.getFleetConfig().getTelematicsEnabled());
-            response.setFleetConfig(fleetConfig);
+        if ("Riders Management".equals(appName)) {
+            tenantRidersConfigRepository.findByTenantId(tenant.getId())
+                .ifPresent(config -> {
+                    RidersConfigDTO ridersConfig = new RidersConfigDTO();
+                    ridersConfig.setRiderLimit(config.getRiderLimit());
+                    ridersConfig.setCurrentRiderCount(null);
+                    ridersConfig.setDeliveryZones(config.getDeliveryZones());
+                    ridersConfig.setMaxDailyDeliveries(config.getMaxDailyDeliveries());
+                    ridersConfig.setRealTimeTracking(config.getRealTimeTracking());
+                    ridersConfig.setSmsNotifications(config.getSmsNotifications());
+                    response.setRidersConfig(ridersConfig);
+                });
+        } else if ("Warehouse Management".equals(appName)) {
+            tenantWarehouseConfigRepository.findByTenantId(tenant.getId())
+                .ifPresent(config -> {
+                    WarehouseConfigDTO warehouseConfig = new WarehouseConfigDTO();
+                    warehouseConfig.setWarehouseCapacityM3(config.getWarehouseCapacityM3());
+                    warehouseConfig.setLoadingDocks(config.getLoadingDocks());
+                    warehouseConfig.setInventorySkuLimit(config.getInventorySkuLimit());
+                    warehouseConfig.setBarcodeScanning(config.getBarcodeScanning());
+                    warehouseConfig.setRfidEnabled(config.getRfidEnabled());
+                    warehouseConfig.setTemperatureControlledZones(config.getTemperatureControlledZones());
+                    response.setWarehouseConfig(warehouseConfig);
+                });
+        } else if ("Fleet Management".equals(appName)) {
+            tenantFleetConfigRepository.findByTenantId(tenant.getId())
+                .ifPresent(config -> {
+                    FleetConfigDTO fleetConfig = new FleetConfigDTO();
+                    fleetConfig.setVehicleLimit(config.getVehicleLimit());
+                    fleetConfig.setGpsTracking(config.getGpsTracking());
+                    fleetConfig.setMaintenanceAlerts(config.getMaintenanceAlerts());
+                    fleetConfig.setFuelMonitoring(config.getFuelMonitoring());
+                    fleetConfig.setDriverScoring(config.getDriverScoring());
+                    fleetConfig.setTelematicsEnabled(config.getTelematicsEnabled());
+                    response.setFleetConfig(fleetConfig);
+                });
         }
 
         return response;
