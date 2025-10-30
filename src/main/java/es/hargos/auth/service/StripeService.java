@@ -91,6 +91,13 @@ public class StripeService {
                 throw new IllegalStateException("Este tenant ya tiene una suscripción activa");
             }
 
+            // Get tenant admin email for Stripe customer
+            String customerEmail = tenant.getUserTenantRoles().stream()
+                    .filter(utr -> "TENANT_ADMIN".equals(utr.getRole()))
+                    .findFirst()
+                    .map(utr -> utr.getUser().getEmail())
+                    .orElse(organization.getName().toLowerCase().replaceAll("\\s+", "") + "@customer.com");
+
             // Create metadata to track the purchase
             Map<String, String> metadata = new HashMap<>();
             metadata.put("organization_id", organizationId.toString());
@@ -120,7 +127,7 @@ public class StripeService {
                                     .build()
                     )
                     .putAllMetadata(metadata)
-                    .setCustomerEmail(organization.getName() + "@example.com") // TODO: Use real email
+                    .setCustomerEmail(customerEmail)
                     .setAllowPromotionCodes(true)
                     .setBillingAddressCollection(SessionCreateParams.BillingAddressCollection.REQUIRED)
                     .build();
