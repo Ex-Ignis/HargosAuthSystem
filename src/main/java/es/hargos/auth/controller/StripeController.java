@@ -262,22 +262,14 @@ public class StripeController {
         try {
             switch (event.getType()) {
                 case "checkout.session.completed":
-                    try {
-                        // Extract session ID from the raw payload JSON
-                        // Look for "id": "cs_test_..." pattern in the payload
-                        String sessionId = extractSessionIdFromPayload(payload);
-
-                        if (sessionId != null) {
-                            log.info("Extracted session ID from payload: {}", sessionId);
-                            // Fetch the full session object from Stripe API
-                            Session session = Session.retrieve(sessionId);
-                            stripeService.handleCheckoutCompleted(session);
-                            log.info("Successfully processed checkout.session.completed");
-                        } else {
-                            log.error("Could not extract session ID from webhook payload");
-                        }
-                    } catch (Exception e) {
-                        log.error("Error processing checkout.session.completed", e);
+                    Session session = (Session) event.getDataObjectDeserializer()
+                            .getObject()
+                            .orElse(null);
+                    if (session != null) {
+                        stripeService.handleCheckoutCompleted(session);
+                        log.info("Successfully processed checkout.session.completed");
+                    } else {
+                        log.warn("checkout.session.completed: could not deserialize Session object");
                     }
                     break;
 
@@ -339,75 +331,6 @@ public class StripeController {
             log.error("Error handling webhook event", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body("Error processing webhook");
-        }
-    }
-
-    /**
-     * Helper method to extract session ID from raw webhook payload
-     * Looks for the pattern: "data":{"object":{"id":"cs_test_..." in the JSON
-     */
-    private String extractSessionIdFromPayload(String payload) {
-        try {
-            // Log first 500 characters of payload for debugging
-            log.debug("Webhook payload (first 500 chars): {}", payload.substring(0, Math.min(500, payload.length())));
-
-            // Look for the session ID pattern in the payload
-            // The JSON structure is: {"data":{"object":{"id":"cs_test_...
-            int dataObjectIndex = payload.indexOf("\"data\"");
-            if (dataObjectIndex == -1) {
-                log.error("Could not find 'data' in payload");
-                return null;
-            }
-
-            String fromData = payload.substring(dataObjectIndex);
-            int objectIndex = fromData.indexOf("\"object\"");
-            if (objectIndex == -1) {
-                log.error("Could not find 'object' in payload");
-                return null;
-            }
-
-            String fromObject = fromData.substring(objectIndex);
-            // Look for "id": "cs_" (with possible spaces after colon)
-            int idIndex = fromObject.indexOf("\"id\"");
-            if (idIndex == -1) {
-                log.error("Could not find 'id' field in object");
-                return null;
-            }
-
-            // Find the opening quote after the colon
-            int colonIndex = fromObject.indexOf(":", idIndex);
-            if (colonIndex == -1) {
-                log.error("Could not find colon after 'id' field");
-                return null;
-            }
-
-            int openQuoteIndex = fromObject.indexOf("\"", colonIndex);
-            if (openQuoteIndex == -1) {
-                log.error("Could not find opening quote for id value");
-                return null;
-            }
-
-            // Check if the value starts with "cs_"
-            if (!fromObject.substring(openQuoteIndex + 1).startsWith("cs_")) {
-                log.error("ID value does not start with 'cs_'");
-                log.debug("From object (first 200 chars): {}", fromObject.substring(0, Math.min(200, fromObject.length())));
-                return null;
-            }
-
-            // Extract the session ID value
-            int idStart = openQuoteIndex + 1; // After the opening quote
-            int idEnd = fromObject.indexOf("\"", idStart);
-            if (idEnd == -1) {
-                log.error("Could not find closing quote for session ID");
-                return null;
-            }
-
-            String sessionId = fromObject.substring(idStart, idEnd);
-            log.info("Successfully extracted session ID: {}", sessionId);
-            return sessionId;
-        } catch (Exception e) {
-            log.error("Error extracting session ID from payload", e);
-            return null;
         }
     }
 }
