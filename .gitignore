@@ -1,0 +1,21 @@
+.idea/
+*.sql
+*.yml
+application.properties
+*.sh
+
+# Environment variables (secrets)
+.env
+.env.local
+.env.production
+
+# Maven
+target/
+!.mvn/wrapper/maven-wrapper.jar
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
