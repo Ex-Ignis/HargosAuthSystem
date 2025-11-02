@@ -58,7 +58,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/ritrack/**").permitAll()
 
                         // Stripe webhook endpoint - public (Stripe calls this with signature verification)
-                        .requestMatchers("/api/stripe/webhook").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/stripe/webhook").permitAll()
 
                         // Purchase endpoints - require authentication (user must be logged in to purchase)
                         .requestMatchers("/api/purchase/**").authenticated()
@@ -107,7 +107,8 @@ public class SecurityConfig {
                 "Content-Type",
                 "Accept",
                 "Origin",
-                "X-Requested-With"
+                "X-Requested-With",
+                "Stripe-Signature"
         ));
 
         // Expose headers

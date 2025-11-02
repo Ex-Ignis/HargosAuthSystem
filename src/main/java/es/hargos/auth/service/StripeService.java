@@ -331,7 +331,7 @@ public class StripeService {
         }
 
         // 4. Create tenant configuration based on app type (if not exists)
-        if ("Riders Management".equals(app.getName())) {
+        if ("RiTrack".equals(app.getName())) {
             if (tenant.getRidersConfig() == null) {
                 TenantRidersConfigEntity ridersConfig = new TenantRidersConfigEntity();
                 ridersConfig.setTenant(tenant);
@@ -615,9 +615,23 @@ public class StripeService {
     @Transactional
     public void handleInvoicePaymentSucceeded(Invoice invoice) {
         try {
-            String subscriptionId = invoice.getSubscription();
+            // Retrieve full invoice with subscription expanded
+            String invoiceId = invoice.getId();
+            com.stripe.param.InvoiceRetrieveParams params = com.stripe.param.InvoiceRetrieveParams.builder()
+                    .addExpand("subscription")
+                    .build();
+
+            Invoice fullInvoice = null;
+            try {
+                fullInvoice = Invoice.retrieve(invoiceId, params, null);
+            } catch (Exception e) {
+                log.error("Failed to retrieve invoice {}", invoiceId, e);
+                return;
+            }
+
+            String subscriptionId = fullInvoice.getSubscription();
             if (subscriptionId == null) {
-                log.warn("Invoice {} has no subscription", invoice.getId());
+                log.warn("Invoice {} has no subscription", invoiceId);
                 return;
             }
 
@@ -626,28 +640,28 @@ public class StripeService {
                     .orElseThrow(() -> new ResourceNotFoundException("Suscripción no encontrada"));
 
             // Check if payment already recorded
-            if (paymentHistoryRepository.existsByStripeInvoiceId(invoice.getId())) {
-                log.info("Payment history already exists for invoice {}", invoice.getId());
+            if (paymentHistoryRepository.existsByStripeInvoiceId(fullInvoice.getId())) {
+                log.info("Payment history already exists for invoice {}", fullInvoice.getId());
                 return;
             }
 
             // Create payment history record
             StripePaymentHistoryEntity payment = new StripePaymentHistoryEntity();
             payment.setSubscription(subscription);
-            payment.setStripeInvoiceId(invoice.getId());
-            payment.setStripePaymentIntentId(invoice.getPaymentIntent());
-            payment.setStripeChargeId(invoice.getCharge());
-            payment.setAmountCents(invoice.getAmountPaid().intValue());
-            payment.setCurrency(invoice.getCurrency().toUpperCase());
+            payment.setStripeInvoiceId(fullInvoice.getId());
+            payment.setStripePaymentIntentId(fullInvoice.getPaymentIntent());
+            payment.setStripeChargeId(fullInvoice.getCharge());
+            payment.setAmountCents(fullInvoice.getAmountPaid().intValue());
+            payment.setCurrency(fullInvoice.getCurrency().toUpperCase());
             payment.setStatus("paid");
-            payment.setInvoicePdfUrl(invoice.getInvoicePdf());
-            payment.setHostedInvoiceUrl(invoice.getHostedInvoiceUrl());
-            payment.setAttemptedAt(toLocalDateTime(invoice.getCreated()));
-            payment.setPaidAt(toLocalDateTime(invoice.getStatusTransitions().getPaidAt()));
+            payment.setInvoicePdfUrl(fullInvoice.getInvoicePdf());
+            payment.setHostedInvoiceUrl(fullInvoice.getHostedInvoiceUrl());
+            payment.setAttemptedAt(toLocalDateTime(fullInvoice.getCreated()));
+            payment.setPaidAt(toLocalDateTime(fullInvoice.getStatusTransitions().getPaidAt()));
 
             paymentHistoryRepository.save(payment);
 
-            log.info("Recorded successful payment for invoice {}", invoice.getId());
+            log.info("Recorded successful payment for invoice {}", fullInvoice.getId());
 
         } catch (Exception e) {
             log.error("Error handling invoice payment success", e);

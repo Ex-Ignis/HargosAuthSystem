@@ -262,62 +262,62 @@ public class StripeController {
         try {
             switch (event.getType()) {
                 case "checkout.session.completed":
-                    Session session = (Session) event.getDataObjectDeserializer()
-                            .getObject()
-                            .orElse(null);
-                    if (session != null) {
+                    log.debug("Deserializing checkout.session.completed event");
+                    Session session = null;
+                    try {
+                        session = (Session) event.getData().getObject();
                         stripeService.handleCheckoutCompleted(session);
                         log.info("Successfully processed checkout.session.completed");
-                    } else {
-                        log.warn("checkout.session.completed: could not deserialize Session object");
+                    } catch (Exception e) {
+                        log.error("checkout.session.completed: Error processing event", e);
                     }
                     break;
 
                 case "customer.subscription.updated":
-                    Subscription subscriptionUpdated = (Subscription) event.getDataObjectDeserializer()
-                            .getObject()
-                            .orElse(null);
-                    if (subscriptionUpdated != null) {
+                    log.debug("Deserializing customer.subscription.updated event");
+                    Subscription subscriptionUpdated = null;
+                    try {
+                        subscriptionUpdated = (Subscription) event.getData().getObject();
                         stripeService.handleSubscriptionUpdated(subscriptionUpdated);
                         log.info("Successfully processed customer.subscription.updated");
-                    } else {
-                        log.warn("customer.subscription.updated: could not deserialize Subscription object");
+                    } catch (Exception e) {
+                        log.error("customer.subscription.updated: Error processing event", e);
                     }
                     break;
 
                 case "customer.subscription.deleted":
-                    Subscription subscriptionDeleted = (Subscription) event.getDataObjectDeserializer()
-                            .getObject()
-                            .orElse(null);
-                    if (subscriptionDeleted != null) {
+                    log.debug("Deserializing customer.subscription.deleted event");
+                    Subscription subscriptionDeleted = null;
+                    try {
+                        subscriptionDeleted = (Subscription) event.getData().getObject();
                         stripeService.handleSubscriptionDeleted(subscriptionDeleted);
                         log.info("Successfully processed customer.subscription.deleted");
-                    } else {
-                        log.warn("customer.subscription.deleted: could not deserialize Subscription object");
+                    } catch (Exception e) {
+                        log.error("customer.subscription.deleted: Error processing event", e);
                     }
                     break;
 
                 case "invoice.payment_succeeded":
-                    Invoice invoiceSucceeded = (Invoice) event.getDataObjectDeserializer()
-                            .getObject()
-                            .orElse(null);
-                    if (invoiceSucceeded != null) {
+                    log.debug("Deserializing invoice.payment_succeeded event");
+                    Invoice invoiceSucceeded = null;
+                    try {
+                        invoiceSucceeded = (Invoice) event.getData().getObject();
                         stripeService.handleInvoicePaymentSucceeded(invoiceSucceeded);
                         log.info("Successfully processed invoice.payment_succeeded");
-                    } else {
-                        log.warn("invoice.payment_succeeded: could not deserialize Invoice object");
+                    } catch (Exception e) {
+                        log.error("invoice.payment_succeeded: Error processing event", e);
                     }
                     break;
 
                 case "invoice.payment_failed":
-                    Invoice invoiceFailed = (Invoice) event.getDataObjectDeserializer()
-                            .getObject()
-                            .orElse(null);
-                    if (invoiceFailed != null) {
+                    log.debug("Deserializing invoice.payment_failed event");
+                    Invoice invoiceFailed = null;
+                    try {
+                        invoiceFailed = (Invoice) event.getData().getObject();
                         stripeService.handleInvoicePaymentFailed(invoiceFailed);
                         log.info("Successfully processed invoice.payment_failed");
-                    } else {
-                        log.warn("invoice.payment_failed: could not deserialize Invoice object");
+                    } catch (Exception e) {
+                        log.error("invoice.payment_failed: Error processing event", e);
                     }
                     break;
 
