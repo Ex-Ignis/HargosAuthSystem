@@ -71,20 +71,8 @@ public class AuthService {
         }
 
         // 3. Verificar si el usuario ya existe
-        // IMPORTANTE: Para prevenir enumeración de usuarios, NO lanzamos excepción aquí
-        // En su lugar, devolvemos un UserResponse genérico sin crear cuenta
         if (userRepository.existsByEmail(request.getEmail())) {
-            // Devolver respuesta genérica (email ya registrado, pero no lo revelamos)
-            // El frontend siempre mostrará: "Registro exitoso. Verifica tu email."
-            return new UserResponse(
-                    null,  // No revelamos ID
-                    request.getEmail(),
-                    request.getFullName(),
-                    false,  // No activo porque no creamos cuenta
-                    false,  // No verificado
-                    new ArrayList<>(),
-                    LocalDateTime.now()
-            );
+            throw new DuplicateResourceException("El email ya está registrado");
         }
 
         // 4. Crear usuario SIN asignación a ningún tenant

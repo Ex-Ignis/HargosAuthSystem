@@ -130,6 +130,12 @@ public class StripeService {
                     .setCustomerEmail(customerEmail)
                     .setAllowPromotionCodes(true)
                     .setBillingAddressCollection(SessionCreateParams.BillingAddressCollection.REQUIRED)
+                    // Enable automatic tax calculation
+                    .setAutomaticTax(
+                            SessionCreateParams.AutomaticTax.builder()
+                                    .setEnabled(true)
+                                    .build()
+                    )
                     .build();
 
             // Create session with Stripe API
@@ -224,6 +230,12 @@ public class StripeService {
                     .setCustomerEmail(user.getEmail())
                     .setAllowPromotionCodes(true)
                     .setBillingAddressCollection(SessionCreateParams.BillingAddressCollection.REQUIRED)
+                    // Enable automatic tax calculation
+                    .setAutomaticTax(
+                            SessionCreateParams.AutomaticTax.builder()
+                                    .setEnabled(true)
+                                    .build()
+                    )
                     .build();
 
             // 7. Create session with Stripe API

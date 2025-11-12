@@ -61,21 +61,21 @@ public class StripeController {
                 request.getOrganizationId(),
                 request.getTenantId(),
                 request.getAccountQuantity(),
-                request.getRidersQuantity()
-        );
+                request.getRidersQuantity());
 
         CheckoutSessionResponse response = new CheckoutSessionResponse(
                 checkoutUrl,
-                String.format("Sesión de checkout creada: %d cuentas + %d riders. Total calculado automáticamente por Stripe.",
-                              request.getAccountQuantity(), request.getRidersQuantity())
-        );
+                String.format(
+                        "Sesión de checkout creada: %d cuentas + %d riders. Total calculado automáticamente por Stripe.",
+                        request.getAccountQuantity(), request.getRidersQuantity()));
 
         return ResponseEntity.ok(response);
     }
 
     /**
      * Create a Stripe Checkout Session for new customer onboarding
-     * This validates tenant creation BEFORE charging, then creates everything on webhook
+     * This validates tenant creation BEFORE charging, then creates everything on
+     * webhook
      *
      * NO authentication required - allows anonymous users to start checkout
      * User will be linked via email stored in metadata
@@ -97,8 +97,7 @@ public class StripeController {
 
         String checkoutUrl = stripeService.createOnboardingCheckoutSession(
                 userEmail,
-                request
-        );
+                request);
 
         CheckoutSessionResponse response = new CheckoutSessionResponse(
                 checkoutUrl,
@@ -106,8 +105,7 @@ public class StripeController {
                         request.getOrganizationName(),
                         request.getTenantName(),
                         request.getAccountQuantity(),
-                        request.getRidersQuantity())
-        );
+                        request.getRidersQuantity()));
 
         return ResponseEntity.ok(response);
     }
@@ -155,8 +153,7 @@ public class StripeController {
         stripeService.cancelSubscription(tenantId);
 
         return ResponseEntity.ok(new MessageResponse(
-                "Suscripción cancelada. El servicio permanecerá activo hasta el final del período actual."
-        ));
+                "Suscripción cancelada. El servicio permanecerá activo hasta el final del período actual."));
     }
 
     /**
@@ -170,8 +167,7 @@ public class StripeController {
         stripeService.reactivateSubscription(tenantId);
 
         return ResponseEntity.ok(new MessageResponse(
-                "Suscripción reactivada correctamente. Se renovará automáticamente al final del período."
-        ));
+                "Suscripción reactivada correctamente. Se renovará automáticamente al final del período."));
     }
 
     /**
@@ -185,18 +181,17 @@ public class StripeController {
             @Valid @RequestBody UpdateSubscriptionQuantitiesRequest request) {
 
         log.info("Updating subscription quantities for tenant: {} ({} accounts, {} riders)",
-                 tenantId, request.getAccountQuantity(), request.getRidersQuantity());
+                tenantId, request.getAccountQuantity(), request.getRidersQuantity());
 
         stripeService.updateSubscriptionQuantities(
                 tenantId,
                 request.getAccountQuantity(),
-                request.getRidersQuantity()
-        );
+                request.getRidersQuantity());
 
         return ResponseEntity.ok(new MessageResponse(
-                String.format("Cantidades actualizadas: %d cuentas + %d riders. Los cambios se prorratearán automáticamente.",
-                              request.getAccountQuantity(), request.getRidersQuantity())
-        ));
+                String.format(
+                        "Cantidades actualizadas: %d cuentas + %d riders. Los cambios se prorratearán automáticamente.",
+                        request.getAccountQuantity(), request.getRidersQuantity())));
     }
 
     // ==================== PAYMENT HISTORY ====================
@@ -222,8 +217,7 @@ public class StripeController {
                         .hostedInvoiceUrl(payment.getHostedInvoiceUrl())
                         .paidAt(payment.getPaidAt())
                         .createdAt(payment.getCreatedAt())
-                        .build()
-                )
+                        .build())
                 .collect(Collectors.toList());
 
         return ResponseEntity.ok(response);
@@ -233,7 +227,8 @@ public class StripeController {
 
     /**
      * Stripe Webhook endpoint
-     * Handles events from Stripe (checkout completed, subscription updated, payments, etc.)
+     * Handles events from Stripe (checkout completed, subscription updated,
+     * payments, etc.)
      *
      * IMPORTANTE: Este endpoint NO debe tener autenticación JWT
      * La seguridad se maneja mediante la firma de Stripe
@@ -242,14 +237,11 @@ public class StripeController {
     public ResponseEntity<String> handleStripeWebhook(
             @RequestBody String payload,
             @RequestHeader("Stripe-Signature") String sigHeader) {
-
         Event event;
-
         try {
             // Verify webhook signature
             event = Webhook.constructEvent(payload, sigHeader, webhookSecret);
             log.info("Received Stripe webhook event: {}", event.getType());
-
         } catch (SignatureVerificationException e) {
             log.error("Invalid Stripe webhook signature", e);
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Invalid signature");
@@ -257,76 +249,63 @@ public class StripeController {
             log.error("Error processing Stripe webhook", e);
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Invalid payload");
         }
-
         // Handle the event
         try {
             switch (event.getType()) {
                 case "checkout.session.completed":
-                    log.debug("Deserializing checkout.session.completed event");
-                    Session session = null;
                     try {
-                        session = (Session) event.getData().getObject();
+                        Session session = (Session) event.getDataObjectDeserializer()
+                                .deserializeUnsafe();
                         stripeService.handleCheckoutCompleted(session);
                         log.info("Successfully processed checkout.session.completed");
                     } catch (Exception e) {
-                        log.error("checkout.session.completed: Error processing event", e);
+                        log.error("checkout.session.completed: error deserializing Session object", e);
                     }
                     break;
-
                 case "customer.subscription.updated":
-                    log.debug("Deserializing customer.subscription.updated event");
-                    Subscription subscriptionUpdated = null;
                     try {
-                        subscriptionUpdated = (Subscription) event.getData().getObject();
+                        Subscription subscriptionUpdated = (Subscription) event.getDataObjectDeserializer()
+                                .deserializeUnsafe();
                         stripeService.handleSubscriptionUpdated(subscriptionUpdated);
                         log.info("Successfully processed customer.subscription.updated");
                     } catch (Exception e) {
-                        log.error("customer.subscription.updated: Error processing event", e);
+                        log.error("customer.subscription.updated: error deserializing Subscription object", e);
                     }
                     break;
-
                 case "customer.subscription.deleted":
-                    log.debug("Deserializing customer.subscription.deleted event");
-                    Subscription subscriptionDeleted = null;
                     try {
-                        subscriptionDeleted = (Subscription) event.getData().getObject();
+                        Subscription subscriptionDeleted = (Subscription) event.getDataObjectDeserializer()
+                                .deserializeUnsafe();
                         stripeService.handleSubscriptionDeleted(subscriptionDeleted);
                         log.info("Successfully processed customer.subscription.deleted");
                     } catch (Exception e) {
-                        log.error("customer.subscription.deleted: Error processing event", e);
+                        log.error("customer.subscription.deleted: error deserializing Subscription object", e);
                     }
                     break;
-
                 case "invoice.payment_succeeded":
-                    log.debug("Deserializing invoice.payment_succeeded event");
-                    Invoice invoiceSucceeded = null;
                     try {
-                        invoiceSucceeded = (Invoice) event.getData().getObject();
+                        Invoice invoiceSucceeded = (Invoice) event.getDataObjectDeserializer()
+                                .deserializeUnsafe();
                         stripeService.handleInvoicePaymentSucceeded(invoiceSucceeded);
                         log.info("Successfully processed invoice.payment_succeeded");
                     } catch (Exception e) {
-                        log.error("invoice.payment_succeeded: Error processing event", e);
+                        log.error("invoice.payment_succeeded: error deserializing Invoice object", e);
                     }
                     break;
-
                 case "invoice.payment_failed":
-                    log.debug("Deserializing invoice.payment_failed event");
-                    Invoice invoiceFailed = null;
                     try {
-                        invoiceFailed = (Invoice) event.getData().getObject();
+                        Invoice invoiceFailed = (Invoice) event.getDataObjectDeserializer()
+                                .deserializeUnsafe();
                         stripeService.handleInvoicePaymentFailed(invoiceFailed);
                         log.info("Successfully processed invoice.payment_failed");
                     } catch (Exception e) {
-                        log.error("invoice.payment_failed: Error processing event", e);
+                        log.error("invoice.payment_failed: error deserializing Invoice object", e);
                     }
                     break;
-
                 default:
                     log.info("Unhandled event type: {}", event.getType());
             }
-
             return ResponseEntity.ok("Webhook processed successfully");
-
         } catch (Exception e) {
             log.error("Error handling webhook event", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)

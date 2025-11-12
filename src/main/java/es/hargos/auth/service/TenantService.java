@@ -50,18 +50,21 @@ public class TenantService {
         return mapToResponse(tenant);
     }
 
+    @Transactional(readOnly = true)
     public List<TenantResponse> getAllTenants() {
         return tenantRepository.findAll().stream()
                 .map(this::mapToResponse)
                 .collect(Collectors.toList());
     }
 
+    @Transactional(readOnly = true)
     public TenantResponse getTenantById(Long id) {
         TenantEntity tenant = tenantRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Tenant no encontrado"));
         return mapToResponse(tenant);
     }
 
+    @Transactional(readOnly = true)
     public List<TenantResponse> getTenantsByOrganization(Long organizationId) {
         OrganizationEntity organization = organizationRepository.findById(organizationId)
                 .orElseThrow(() -> new ResourceNotFoundException("Organizacion no encontrada"));
