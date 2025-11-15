@@ -98,31 +98,6 @@ public class TenantAdminController {
         return ResponseEntity.ok(response);
     }
 
-    @PutMapping("/users/{id}/activate")
-    @Transactional
-    public ResponseEntity<UserResponse> activateUser(
-            @PathVariable Long id,
-            Authentication authentication) {
-
-        UserEntity currentUser = getUserFromAuthentication(authentication);
-        validateUserAccessByTenantAdmin(currentUser, id);
-
-        UserResponse response = userService.updateUserStatus(id, true);
-        return ResponseEntity.ok(response);
-    }
-
-    @PutMapping("/users/{id}/deactivate")
-    @Transactional
-    public ResponseEntity<UserResponse> deactivateUser(
-            @PathVariable Long id,
-            Authentication authentication) {
-
-        UserEntity currentUser = getUserFromAuthentication(authentication);
-        validateUserAccessByTenantAdmin(currentUser, id);
-
-        UserResponse response = userService.updateUserStatus(id, false);
-        return ResponseEntity.ok(response);
-    }
 
     @DeleteMapping("/users/{id}")
     @Transactional
