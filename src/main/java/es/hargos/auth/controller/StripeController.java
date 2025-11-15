@@ -7,6 +7,7 @@ import com.stripe.net.Webhook;
 import es.hargos.auth.dto.request.CreateCheckoutSessionRequest;
 import es.hargos.auth.dto.request.CreateOnboardingCheckoutRequest;
 import es.hargos.auth.dto.request.UpdateSubscriptionQuantitiesRequest;
+import es.hargos.auth.dto.response.BillingPortalResponse;
 import es.hargos.auth.dto.response.CheckoutSessionResponse;
 import es.hargos.auth.dto.response.MessageResponse;
 import es.hargos.auth.dto.response.PaymentHistoryResponse;
@@ -192,6 +193,24 @@ public class StripeController {
                 String.format(
                         "Cantidades actualizadas: %d cuentas + %d riders. Los cambios se prorratearán automáticamente.",
                         request.getAccountQuantity(), request.getRidersQuantity())));
+    }
+
+    /**
+     * Create Stripe Billing Portal session
+     * Allows customers to manage payment methods, view invoices, and update billing info
+     */
+    @PostMapping("/billing-portal/tenant/{tenantId}")
+    @PreAuthorize("@authz.isSuperAdmin() or @authz.canAccessTenant(#tenantId)")
+    public ResponseEntity<BillingPortalResponse> createBillingPortalSession(@PathVariable Long tenantId) {
+
+        log.info("Creating billing portal session for tenant: {}", tenantId);
+        String portalUrl = stripeService.createBillingPortalSession(tenantId);
+
+        BillingPortalResponse response = new BillingPortalResponse(
+                portalUrl,
+                "Sesión del portal de facturación creada correctamente");
+
+        return ResponseEntity.ok(response);
     }
 
     // ==================== PAYMENT HISTORY ====================

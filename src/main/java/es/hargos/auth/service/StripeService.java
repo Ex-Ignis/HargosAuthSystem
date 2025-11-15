@@ -553,6 +553,45 @@ public class StripeService {
         }
     }
 
+    /**
+     * Create a Stripe Billing Portal session
+     * Allows customers to manage payment methods, view invoices, and update billing information
+     *
+     * @param tenantId Tenant ID
+     * @return Billing Portal URL for customer redirect
+     */
+    @Transactional(readOnly = true)
+    public String createBillingPortalSession(Long tenantId) {
+        try {
+            // Get subscription with customer ID
+            StripeSubscriptionEntity subscription = subscriptionRepository.findByTenantId(tenantId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Suscripción no encontrada para este tenant"));
+
+            String customerId = subscription.getStripeCustomerId();
+            if (customerId == null || customerId.isEmpty()) {
+                throw new IllegalStateException("No se encontró un customer ID de Stripe para este tenant");
+            }
+
+            // Create billing portal session
+            com.stripe.param.billingportal.SessionCreateParams params =
+                com.stripe.param.billingportal.SessionCreateParams.builder()
+                    .setCustomer(customerId)
+                    .setReturnUrl(successUrl + "?tenantId=" + tenantId)
+                    .build();
+
+            com.stripe.model.billingportal.Session portalSession =
+                com.stripe.model.billingportal.Session.create(params);
+
+            log.info("Created billing portal session for customer: {}, tenant: {}", customerId, tenantId);
+
+            return portalSession.getUrl();
+
+        } catch (StripeException e) {
+            log.error("Error creating billing portal session for tenant: {}", tenantId, e);
+            throw new RuntimeException("Error al crear la sesión del portal de facturación: " + e.getMessage());
+        }
+    }
+
     // ==================== WEBHOOK HANDLERS ====================
 
     /**
