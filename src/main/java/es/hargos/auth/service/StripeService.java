@@ -14,8 +14,10 @@ import es.hargos.auth.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.RestTemplate;
 
 import jakarta.annotation.PostConstruct;
 import java.time.Instant;
@@ -43,9 +45,13 @@ public class StripeService {
     private final UserRepository userRepository;
     private final AppRepository appRepository;
     private final UserTenantRoleRepository userTenantRoleRepository;
+    private final RestTemplate restTemplate;
 
     @Value("${stripe.api-key}")
     private String stripeApiKey;
+
+    @Value("${ritrack.base-url}")
+    private String ritrackBaseUrl;
 
     @Value("${stripe.success-url}")
     private String successUrl;
@@ -771,12 +777,44 @@ public class StripeService {
     /**
      * Update subscription quantities (accounts and riders)
      * Allows customers to upgrade/downgrade their plan
+     *
+     * VALIDACIÓN DE DOWNGRADE:
+     * - Si el usuario intenta reducir riders a menos de los que tiene actualmente en RiTrack, se bloquea
      */
     @Transactional
     public void updateSubscriptionQuantities(Long tenantId, Integer newAccountQuantity, Integer newRidersQuantity) {
         try {
             StripeSubscriptionEntity subscription = subscriptionRepository.findByTenantId(tenantId)
                     .orElseThrow(() -> new ResourceNotFoundException("Suscripción no encontrada"));
+
+            // VALIDACIÓN: Prevenir downgrade con riders activos
+            TenantEntity tenant = subscription.getTenant();
+            if (tenant.getRidersConfig() != null) {
+                Integer currentLimit = tenant.getRidersConfig().getRiderLimit();
+
+                // Si está intentando reducir riders, validar con RiTrack
+                if (currentLimit != null && newRidersQuantity < currentLimit) {
+                    log.info("Tenant {}: Intentando reducir riders de {} a {}, validando con RiTrack...",
+                            tenantId, currentLimit, newRidersQuantity);
+
+                    // Consultar a RiTrack cuántos riders tiene actualmente
+                    Integer actualRiderCount = getRealRiderCountFromRiTrack(tenant);
+
+                    if (actualRiderCount != null && newRidersQuantity < actualRiderCount) {
+                        log.error("Tenant {}: DOWNGRADE BLOQUEADO - Tiene {} riders activos pero intenta reducir a {}",
+                                tenantId, actualRiderCount, newRidersQuantity);
+
+                        throw new IllegalStateException(
+                                String.format(
+                                        "No puedes reducir tu plan a %d riders porque actualmente tienes %d riders activos en RiTrack. " +
+                                        "Por favor, elimina %d riders primero o selecciona un plan que permita al menos %d riders.",
+                                        newRidersQuantity, actualRiderCount,
+                                        actualRiderCount - newRidersQuantity, actualRiderCount
+                                )
+                        );
+                    }
+                }
+            }
 
             Subscription stripeSubscription = Subscription.retrieve(subscription.getStripeSubscriptionId());
 
@@ -858,6 +896,42 @@ public class StripeService {
     }
 
     /**
+     * Get the real rider count from RiTrack for a tenant.
+     * Used to validate subscription downgrades.
+     *
+     * @param tenant Tenant entity with hargosTenantId
+     * @return Actual rider count from RiTrack, or null if RiTrack is unreachable
+     */
+    private Integer getRealRiderCountFromRiTrack(TenantEntity tenant) {
+        if (tenant.getId() == null) {
+            log.warn("Cannot query RiTrack: tenant ID is null");
+            return null;
+        }
+
+        try {
+            String url = ritrackBaseUrl + "/api/ritrack-public/tenant/" + tenant.getId() + "/rider-count";
+            log.debug("Querying RiTrack for rider count: {}", url);
+
+            ResponseEntity<RiderCountResponse> response = restTemplate.getForEntity(url, RiderCountResponse.class);
+
+            if (response.getBody() != null) {
+                Integer count = response.getBody().riderCount();
+                log.info("RiTrack reports {} riders for tenant {}", count, tenant.getId());
+                return count;
+            }
+
+            log.warn("RiTrack returned null response for tenant {}", tenant.getId());
+            return null;
+
+        } catch (Exception e) {
+            log.error("Failed to query RiTrack for tenant {}: {}", tenant.getId(), e.getMessage());
+            // Return null to allow downgrade if RiTrack is unreachable (fail-open strategy)
+            // Alternative: throw exception to fail-closed (more strict)
+            return null;
+        }
+    }
+
+    /**
      * Convert Unix timestamp to LocalDateTime
      */
     private LocalDateTime toLocalDateTime(Long unixTimestamp) {
@@ -868,5 +942,13 @@ public class StripeService {
                 Instant.ofEpochSecond(unixTimestamp),
                 ZoneId.systemDefault()
         );
+    }
+
+    // ==================== DTOs for RiTrack Communication ====================
+
+    /**
+     * Response from RiTrack public API for rider count
+     */
+    private record RiderCountResponse(Integer riderCount, String message) {
     }
 }

@@ -1,16 +1,22 @@
 package es.hargos.auth.controller;
 
+import es.hargos.auth.entity.LimitExceededNotificationEntity;
 import es.hargos.auth.entity.TenantEntity;
 import es.hargos.auth.exception.ResourceNotFoundException;
+import es.hargos.auth.repository.LimitExceededNotificationRepository;
 import es.hargos.auth.repository.TenantRepository;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import java.time.LocalDateTime;
 
 /**
  * Controller para comunicación con aplicaciones externas (droplets).
@@ -21,7 +27,10 @@ import org.springframework.web.bind.annotation.*;
 @RequiredArgsConstructor
 public class RitrackController {
 
+    private static final Logger logger = LoggerFactory.getLogger(RitrackController.class);
+
     private final TenantRepository tenantRepository;
+    private final LimitExceededNotificationRepository notificationRepository;
 
     /**
      * Valida si un tenant puede tener el número de riders especificado.
@@ -112,6 +121,46 @@ public class RitrackController {
         ));
     }
 
+    /**
+     * Recibe notificaciones de RiTrack cuando detecta que un tenant excedió el límite de riders.
+     * Crea una notificación para SUPER_ADMIN.
+     *
+     * @param request Detalles del exceso detectado
+     * @return Confirmación de notificación creada
+     */
+    @PostMapping("/report-limit-exceeded")
+    public ResponseEntity<ReportLimitExceededResponse> reportLimitExceeded(
+            @Valid @RequestBody ReportLimitExceededRequest request) {
+
+        logger.warn("RiTrack reporta límite excedido: tenantId={}, current={}, limit={}, excess={}",
+                request.getTenantId(), request.getCurrentCount(), request.getAllowedLimit(), request.getExcessCount());
+
+        // Verificar que el tenant existe
+        TenantEntity tenant = tenantRepository.findById(request.getTenantId())
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant no encontrado: " + request.getTenantId()));
+
+        // Crear notificación
+        LimitExceededNotificationEntity notification = LimitExceededNotificationEntity.builder()
+                .tenant(tenant)
+                .currentCount(request.getCurrentCount())
+                .allowedLimit(request.getAllowedLimit())
+                .excessCount(request.getExcessCount())
+                .detectedAt(LocalDateTime.now())
+                .isAcknowledged(false)
+                .build();
+
+        notificationRepository.save(notification);
+
+        logger.info("Notificación de límite excedido creada: id={}, tenant={}, excess={}",
+                notification.getId(), tenant.getName(), notification.getExcessCount());
+
+        return ResponseEntity.ok(new ReportLimitExceededResponse(
+                notification.getId(),
+                7, // Grace period days
+                "Notificación creada correctamente para revisión de SUPER_ADMIN"
+        ));
+    }
+
     // ==================== DTOs ====================
 
     @Data
@@ -130,5 +179,26 @@ public class RitrackController {
 
     public record TenantInfoResponse(Long id, String name, String organizationName, String appName,
                                      Integer accountLimit, Integer riderLimit, Boolean isActive) {
+    }
+
+    @Data
+    public static class ReportLimitExceededRequest {
+        @NotNull(message = "Tenant ID es obligatorio")
+        private Long tenantId;
+
+        @NotNull(message = "Número actual de riders es obligatorio")
+        @Min(value = 0, message = "El número de riders no puede ser negativo")
+        private Integer currentCount;
+
+        @NotNull(message = "Límite permitido es obligatorio")
+        @Min(value = 0, message = "El límite no puede ser negativo")
+        private Integer allowedLimit;
+
+        @NotNull(message = "Exceso es obligatorio")
+        @Min(value = 1, message = "El exceso debe ser al menos 1")
+        private Integer excessCount;
+    }
+
+    public record ReportLimitExceededResponse(Long notificationId, Integer gracePeriodDays, String message) {
     }
 }
