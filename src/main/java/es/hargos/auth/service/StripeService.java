@@ -8,12 +8,14 @@ import com.stripe.param.*;
 import com.stripe.param.checkout.SessionCreateParams;
 import es.hargos.auth.dto.request.CreateOnboardingCheckoutRequest;
 import es.hargos.auth.entity.*;
+import es.hargos.auth.event.TenantLimitsUpdatedEvent;
 import es.hargos.auth.exception.DuplicateResourceException;
 import es.hargos.auth.exception.ResourceNotFoundException;
 import es.hargos.auth.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -46,6 +48,7 @@ public class StripeService {
     private final AppRepository appRepository;
     private final UserTenantRoleRepository userTenantRoleRepository;
     private final RestTemplate restTemplate;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Value("${stripe.api-key}")
     private String stripeApiKey;
@@ -806,10 +809,8 @@ public class StripeService {
 
                         throw new IllegalStateException(
                                 String.format(
-                                        "No puedes reducir tu plan a %d riders porque actualmente tienes %d riders activos en RiTrack. " +
-                                        "Por favor, elimina %d riders primero o selecciona un plan que permita al menos %d riders.",
-                                        newRidersQuantity, actualRiderCount,
-                                        actualRiderCount - newRidersQuantity, actualRiderCount
+                                        "No puedes reducir el límite de riders a %d porque actualmente tienes %d riders activos.",
+                                        newRidersQuantity, actualRiderCount
                                 )
                         );
                     }
@@ -893,6 +894,10 @@ public class StripeService {
         tenantRidersConfigRepository.save(ridersConfig);
 
         log.info("Updated tenant {} limits: {} accounts, {} riders", tenantId, accountQuantity, ridersQuantity);
+
+        // Publish event - RiTrack will be notified AFTER transaction commits
+        log.info("Publishing TenantLimitsUpdatedEvent for tenant {}", tenantId);
+        eventPublisher.publishEvent(new TenantLimitsUpdatedEvent(tenantId, accountQuantity, ridersQuantity));
     }
 
     /**

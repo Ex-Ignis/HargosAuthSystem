@@ -31,6 +31,7 @@ public class RitrackController {
 
     private final TenantRepository tenantRepository;
     private final LimitExceededNotificationRepository notificationRepository;
+    private final es.hargos.auth.repository.TenantRidersConfigRepository tenantRidersConfigRepository;
 
     /**
      * Valida si un tenant puede tener el número de riders especificado.
@@ -100,21 +101,34 @@ public class RitrackController {
      * Útil para que el droplet muestre información al usuario.
      */
     @GetMapping("/tenant-info/{tenantId}")
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public ResponseEntity<TenantInfoResponse> getTenantInfo(@PathVariable Long tenantId) {
         TenantEntity tenant = tenantRepository.findById(tenantId)
                 .orElseThrow(() -> new ResourceNotFoundException("Tenant no encontrado"));
 
         // Obtener riderLimit si existe configuración de Riders
-        Integer riderLimit = null;
-        if (tenant.getRidersConfig() != null) {
-            riderLimit = tenant.getRidersConfig().getRiderLimit();
+        Integer riderLimit = tenantRidersConfigRepository.findByTenantId(tenantId)
+                .map(config -> config.getRiderLimit())
+                .orElse(null);
+
+        logger.info("Tenant {} info requested: riderLimit={}", tenantId, riderLimit);
+
+        // Forzar carga de relaciones lazy dentro de transacción
+        String organizationName = "N/A";
+        String appName = "N/A";
+
+        try {
+            organizationName = tenant.getOrganization() != null ? tenant.getOrganization().getName() : "N/A";
+            appName = tenant.getApp() != null ? tenant.getApp().getName() : "N/A";
+        } catch (Exception e) {
+            logger.warn("Could not load lazy relations for tenant {}: {}", tenantId, e.getMessage());
         }
 
         return ResponseEntity.ok(new TenantInfoResponse(
                 tenant.getId(),
                 tenant.getName(),
-                tenant.getOrganization().getName(),
-                tenant.getApp().getName(),
+                organizationName,
+                appName,
                 tenant.getAccountLimit(),
                 riderLimit,
                 tenant.getIsActive()
