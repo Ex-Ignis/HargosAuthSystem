@@ -32,6 +32,7 @@ public class RitrackController {
     private final TenantRepository tenantRepository;
     private final LimitExceededNotificationRepository notificationRepository;
     private final es.hargos.auth.repository.TenantRidersConfigRepository tenantRidersConfigRepository;
+    private final es.hargos.auth.repository.UserTenantRoleRepository userTenantRoleRepository;
 
     /**
      * Valida si un tenant puede tener el número de riders especificado.
@@ -136,6 +137,49 @@ public class RitrackController {
     }
 
     /**
+     * Obtiene todos los usuarios que pertenecen a un tenant.
+     * Usado por RiTrack para mostrar lista de usuarios al asignar ciudades.
+     *
+     * @param tenantId ID del tenant
+     * @return Lista de usuarios con sus datos básicos y rol en el tenant
+     */
+    @GetMapping("/tenant-users/{tenantId}")
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    public ResponseEntity<java.util.List<TenantUserResponse>> getTenantUsers(@PathVariable Long tenantId) {
+        TenantEntity tenant = tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant no encontrado"));
+
+        logger.info("🔍 RiTrack solicitando usuarios del tenant ID: {} (nombre: {})", tenantId, tenant.getName());
+
+        // Obtener todas las relaciones usuario-tenant
+        java.util.List<es.hargos.auth.entity.UserTenantRoleEntity> userTenantRoles =
+                userTenantRoleRepository.findByTenant(tenant);
+
+        logger.info("📊 Encontradas {} relaciones usuario-tenant para tenant {}", userTenantRoles.size(), tenantId);
+
+        // Mapear a DTOs
+        java.util.List<TenantUserResponse> users = userTenantRoles.stream()
+                .map(utr -> {
+                    es.hargos.auth.entity.UserEntity user = utr.getUser();
+                    logger.debug("  - Usuario: ID={}, Email={}, Role={}", user.getId(), user.getEmail(), utr.getRole());
+                    // UserEntity tiene fullName, no firstName/lastName separados
+                    // Para compatibilidad con RiTrack, enviamos fullName como firstName
+                    return new TenantUserResponse(
+                            user.getId(),
+                            user.getEmail(),
+                            user.getFullName(),  // fullName va en firstName
+                            null,                // lastName null
+                            utr.getRole()
+                    );
+                })
+                .collect(java.util.stream.Collectors.toList());
+
+        logger.info("✅ Retornando {} usuarios del tenant {} ({})", users.size(), tenantId, tenant.getName());
+
+        return ResponseEntity.ok(users);
+    }
+
+    /**
      * Recibe notificaciones de RiTrack cuando detecta que un tenant excedió el límite de riders.
      * Crea una notificación para SUPER_ADMIN.
      *
@@ -214,5 +258,11 @@ public class RitrackController {
     }
 
     public record ReportLimitExceededResponse(Long notificationId, Integer gracePeriodDays, String message) {
+    }
+
+    /**
+     * Response DTO para la lista de usuarios de un tenant
+     */
+    public record TenantUserResponse(Long id, String email, String firstName, String lastName, String role) {
     }
 }
