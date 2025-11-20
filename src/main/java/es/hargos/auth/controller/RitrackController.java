@@ -1,16 +1,22 @@
 package es.hargos.auth.controller;
 
+import es.hargos.auth.entity.LimitExceededNotificationEntity;
 import es.hargos.auth.entity.TenantEntity;
 import es.hargos.auth.exception.ResourceNotFoundException;
+import es.hargos.auth.repository.LimitExceededNotificationRepository;
 import es.hargos.auth.repository.TenantRepository;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import java.time.LocalDateTime;
 
 /**
  * Controller para comunicación con aplicaciones externas (droplets).
@@ -21,7 +27,12 @@ import org.springframework.web.bind.annotation.*;
 @RequiredArgsConstructor
 public class RitrackController {
 
+    private static final Logger logger = LoggerFactory.getLogger(RitrackController.class);
+
     private final TenantRepository tenantRepository;
+    private final LimitExceededNotificationRepository notificationRepository;
+    private final es.hargos.auth.repository.TenantRidersConfigRepository tenantRidersConfigRepository;
+    private final es.hargos.auth.repository.UserTenantRoleRepository userTenantRoleRepository;
 
     /**
      * Valida si un tenant puede tener el número de riders especificado.
@@ -91,24 +102,120 @@ public class RitrackController {
      * Útil para que el droplet muestre información al usuario.
      */
     @GetMapping("/tenant-info/{tenantId}")
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public ResponseEntity<TenantInfoResponse> getTenantInfo(@PathVariable Long tenantId) {
         TenantEntity tenant = tenantRepository.findById(tenantId)
                 .orElseThrow(() -> new ResourceNotFoundException("Tenant no encontrado"));
 
         // Obtener riderLimit si existe configuración de Riders
-        Integer riderLimit = null;
-        if (tenant.getRidersConfig() != null) {
-            riderLimit = tenant.getRidersConfig().getRiderLimit();
+        Integer riderLimit = tenantRidersConfigRepository.findByTenantId(tenantId)
+                .map(config -> config.getRiderLimit())
+                .orElse(null);
+
+        logger.info("Tenant {} info requested: riderLimit={}", tenantId, riderLimit);
+
+        // Forzar carga de relaciones lazy dentro de transacción
+        String organizationName = "N/A";
+        String appName = "N/A";
+
+        try {
+            organizationName = tenant.getOrganization() != null ? tenant.getOrganization().getName() : "N/A";
+            appName = tenant.getApp() != null ? tenant.getApp().getName() : "N/A";
+        } catch (Exception e) {
+            logger.warn("Could not load lazy relations for tenant {}: {}", tenantId, e.getMessage());
         }
 
         return ResponseEntity.ok(new TenantInfoResponse(
                 tenant.getId(),
                 tenant.getName(),
-                tenant.getOrganization().getName(),
-                tenant.getApp().getName(),
+                organizationName,
+                appName,
                 tenant.getAccountLimit(),
                 riderLimit,
                 tenant.getIsActive()
+        ));
+    }
+
+    /**
+     * Obtiene todos los usuarios que pertenecen a un tenant.
+     * Usado por RiTrack para mostrar lista de usuarios al asignar ciudades.
+     *
+     * @param tenantId ID del tenant
+     * @return Lista de usuarios con sus datos básicos y rol en el tenant
+     */
+    @GetMapping("/tenant-users/{tenantId}")
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    public ResponseEntity<java.util.List<TenantUserResponse>> getTenantUsers(@PathVariable Long tenantId) {
+        TenantEntity tenant = tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant no encontrado"));
+
+        logger.info("🔍 RiTrack solicitando usuarios del tenant ID: {} (nombre: {})", tenantId, tenant.getName());
+
+        // Obtener todas las relaciones usuario-tenant
+        java.util.List<es.hargos.auth.entity.UserTenantRoleEntity> userTenantRoles =
+                userTenantRoleRepository.findByTenant(tenant);
+
+        logger.info("📊 Encontradas {} relaciones usuario-tenant para tenant {}", userTenantRoles.size(), tenantId);
+
+        // Mapear a DTOs
+        java.util.List<TenantUserResponse> users = userTenantRoles.stream()
+                .map(utr -> {
+                    es.hargos.auth.entity.UserEntity user = utr.getUser();
+                    logger.debug("  - Usuario: ID={}, Email={}, Role={}", user.getId(), user.getEmail(), utr.getRole());
+                    // UserEntity tiene fullName, no firstName/lastName separados
+                    // Para compatibilidad con RiTrack, enviamos fullName como firstName
+                    return new TenantUserResponse(
+                            user.getId(),
+                            user.getEmail(),
+                            user.getFullName(),  // fullName va en firstName
+                            null,                // lastName null
+                            utr.getRole()
+                    );
+                })
+                .collect(java.util.stream.Collectors.toList());
+
+        logger.info("✅ Retornando {} usuarios del tenant {} ({})", users.size(), tenantId, tenant.getName());
+
+        return ResponseEntity.ok(users);
+    }
+
+    /**
+     * Recibe notificaciones de RiTrack cuando detecta que un tenant excedió el límite de riders.
+     * Crea una notificación para SUPER_ADMIN.
+     *
+     * @param request Detalles del exceso detectado
+     * @return Confirmación de notificación creada
+     */
+    @PostMapping("/report-limit-exceeded")
+    public ResponseEntity<ReportLimitExceededResponse> reportLimitExceeded(
+            @Valid @RequestBody ReportLimitExceededRequest request) {
+
+        logger.warn("RiTrack reporta límite excedido: tenantId={}, current={}, limit={}, excess={}",
+                request.getTenantId(), request.getCurrentCount(), request.getAllowedLimit(), request.getExcessCount());
+
+        // Verificar que el tenant existe
+        TenantEntity tenant = tenantRepository.findById(request.getTenantId())
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant no encontrado: " + request.getTenantId()));
+
+        // Crear notificación
+        LimitExceededNotificationEntity notification = LimitExceededNotificationEntity.builder()
+                .tenant(tenant)
+                .currentCount(request.getCurrentCount())
+                .allowedLimit(request.getAllowedLimit())
+                .excessCount(request.getExcessCount())
+                .detectedAt(LocalDateTime.now())
+                .isAcknowledged(false)
+                .build();
+
+        notificationRepository.save(notification);
+
+        logger.info("Notificación de límite excedido creada: id={}, tenant={}, excess={}",
+                notification.getId(), tenant.getName(), notification.getExcessCount());
+
+        return ResponseEntity.ok(new ReportLimitExceededResponse(
+                notification.getId(),
+                7, // Grace period days
+                "Notificación creada correctamente para revisión de SUPER_ADMIN"
         ));
     }
 
@@ -130,5 +237,32 @@ public class RitrackController {
 
     public record TenantInfoResponse(Long id, String name, String organizationName, String appName,
                                      Integer accountLimit, Integer riderLimit, Boolean isActive) {
+    }
+
+    @Data
+    public static class ReportLimitExceededRequest {
+        @NotNull(message = "Tenant ID es obligatorio")
+        private Long tenantId;
+
+        @NotNull(message = "Número actual de riders es obligatorio")
+        @Min(value = 0, message = "El número de riders no puede ser negativo")
+        private Integer currentCount;
+
+        @NotNull(message = "Límite permitido es obligatorio")
+        @Min(value = 0, message = "El límite no puede ser negativo")
+        private Integer allowedLimit;
+
+        @NotNull(message = "Exceso es obligatorio")
+        @Min(value = 1, message = "El exceso debe ser al menos 1")
+        private Integer excessCount;
+    }
+
+    public record ReportLimitExceededResponse(Long notificationId, Integer gracePeriodDays, String message) {
+    }
+
+    /**
+     * Response DTO para la lista de usuarios de un tenant
+     */
+    public record TenantUserResponse(Long id, String email, String firstName, String lastName, String role) {
     }
 }

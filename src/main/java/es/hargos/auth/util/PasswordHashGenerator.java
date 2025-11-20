@@ -16,7 +16,7 @@ public class PasswordHashGenerator {
         BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
 
         // ⚠️ CAMBIAR ESTA CONTRASEÑA
-        String password = "v";
+        String password = "hargos";
 
         String hash = encoder.encode(password);
 

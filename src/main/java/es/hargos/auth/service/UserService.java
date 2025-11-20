@@ -172,6 +172,7 @@ public class UserService {
         return mapToUserResponse(user, roles);
     }
 
+    @Transactional(readOnly = true)
     public List<UserResponse> getUsersByTenant(Long tenantId) {
         TenantEntity tenant = tenantRepository.findById(tenantId)
                 .orElseThrow(() -> new ResourceNotFoundException("Tenant no encontrado"));
@@ -187,6 +188,7 @@ public class UserService {
                 .collect(Collectors.toList());
     }
 
+    @Transactional(readOnly = true)
     public List<UserResponse> getUsersByTenantAdmin(UserEntity adminUser) {
         // Get all tenants where this user is TENANT_ADMIN
         List<UserTenantRoleEntity> adminTenants = userTenantRoleRepository.findByUserAndRole(adminUser, "TENANT_ADMIN");

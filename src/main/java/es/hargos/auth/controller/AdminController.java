@@ -156,6 +156,12 @@ public class AdminController {
         return ResponseEntity.ok(tenants);
     }
 
+    @GetMapping("/tenants/{id}/users")
+    public ResponseEntity<List<UserResponse>> getUsersByTenant(@PathVariable Long id) {
+        List<UserResponse> users = userService.getUsersByTenant(id);
+        return ResponseEntity.ok(users);
+    }
+
     @PutMapping("/tenants/{id}")
     public ResponseEntity<TenantResponse> updateTenant(
             @PathVariable Long id,

@@ -8,14 +8,18 @@ import com.stripe.param.*;
 import com.stripe.param.checkout.SessionCreateParams;
 import es.hargos.auth.dto.request.CreateOnboardingCheckoutRequest;
 import es.hargos.auth.entity.*;
+import es.hargos.auth.event.TenantLimitsUpdatedEvent;
 import es.hargos.auth.exception.DuplicateResourceException;
 import es.hargos.auth.exception.ResourceNotFoundException;
 import es.hargos.auth.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.RestTemplate;
 
 import jakarta.annotation.PostConstruct;
 import java.time.Instant;
@@ -43,9 +47,14 @@ public class StripeService {
     private final UserRepository userRepository;
     private final AppRepository appRepository;
     private final UserTenantRoleRepository userTenantRoleRepository;
+    private final RestTemplate restTemplate;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Value("${stripe.api-key}")
     private String stripeApiKey;
+
+    @Value("${ritrack.base-url}")
+    private String ritrackBaseUrl;
 
     @Value("${stripe.success-url}")
     private String successUrl;
@@ -553,6 +562,45 @@ public class StripeService {
         }
     }
 
+    /**
+     * Create a Stripe Billing Portal session
+     * Allows customers to manage payment methods, view invoices, and update billing information
+     *
+     * @param tenantId Tenant ID
+     * @return Billing Portal URL for customer redirect
+     */
+    @Transactional(readOnly = true)
+    public String createBillingPortalSession(Long tenantId) {
+        try {
+            // Get subscription with customer ID
+            StripeSubscriptionEntity subscription = subscriptionRepository.findByTenantId(tenantId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Suscripción no encontrada para este tenant"));
+
+            String customerId = subscription.getStripeCustomerId();
+            if (customerId == null || customerId.isEmpty()) {
+                throw new IllegalStateException("No se encontró un customer ID de Stripe para este tenant");
+            }
+
+            // Create billing portal session
+            com.stripe.param.billingportal.SessionCreateParams params =
+                com.stripe.param.billingportal.SessionCreateParams.builder()
+                    .setCustomer(customerId)
+                    .setReturnUrl(successUrl + "?tenantId=" + tenantId)
+                    .build();
+
+            com.stripe.model.billingportal.Session portalSession =
+                com.stripe.model.billingportal.Session.create(params);
+
+            log.info("Created billing portal session for customer: {}, tenant: {}", customerId, tenantId);
+
+            return portalSession.getUrl();
+
+        } catch (StripeException e) {
+            log.error("Error creating billing portal session for tenant: {}", tenantId, e);
+            throw new RuntimeException("Error al crear la sesión del portal de facturación: " + e.getMessage());
+        }
+    }
+
     // ==================== WEBHOOK HANDLERS ====================
 
     /**
@@ -627,9 +675,23 @@ public class StripeService {
     @Transactional
     public void handleInvoicePaymentSucceeded(Invoice invoice) {
         try {
-            String subscriptionId = invoice.getSubscription();
+            // Retrieve full invoice with subscription expanded
+            String invoiceId = invoice.getId();
+            com.stripe.param.InvoiceRetrieveParams params = com.stripe.param.InvoiceRetrieveParams.builder()
+                    .addExpand("subscription")
+                    .build();
+
+            Invoice fullInvoice = null;
+            try {
+                fullInvoice = Invoice.retrieve(invoiceId, params, null);
+            } catch (Exception e) {
+                log.error("Failed to retrieve invoice {}", invoiceId, e);
+                return;
+            }
+
+            String subscriptionId = fullInvoice.getSubscription();
             if (subscriptionId == null) {
-                log.warn("Invoice {} has no subscription", invoice.getId());
+                log.warn("Invoice {} has no subscription", invoiceId);
                 return;
             }
 
@@ -638,28 +700,28 @@ public class StripeService {
                     .orElseThrow(() -> new ResourceNotFoundException("Suscripción no encontrada"));
 
             // Check if payment already recorded
-            if (paymentHistoryRepository.existsByStripeInvoiceId(invoice.getId())) {
-                log.info("Payment history already exists for invoice {}", invoice.getId());
+            if (paymentHistoryRepository.existsByStripeInvoiceId(fullInvoice.getId())) {
+                log.info("Payment history already exists for invoice {}", fullInvoice.getId());
                 return;
             }
 
             // Create payment history record
             StripePaymentHistoryEntity payment = new StripePaymentHistoryEntity();
             payment.setSubscription(subscription);
-            payment.setStripeInvoiceId(invoice.getId());
-            payment.setStripePaymentIntentId(invoice.getPaymentIntent());
-            payment.setStripeChargeId(invoice.getCharge());
-            payment.setAmountCents(invoice.getAmountPaid().intValue());
-            payment.setCurrency(invoice.getCurrency().toUpperCase());
+            payment.setStripeInvoiceId(fullInvoice.getId());
+            payment.setStripePaymentIntentId(fullInvoice.getPaymentIntent());
+            payment.setStripeChargeId(fullInvoice.getCharge());
+            payment.setAmountCents(fullInvoice.getAmountPaid().intValue());
+            payment.setCurrency(fullInvoice.getCurrency().toUpperCase());
             payment.setStatus("paid");
-            payment.setInvoicePdfUrl(invoice.getInvoicePdf());
-            payment.setHostedInvoiceUrl(invoice.getHostedInvoiceUrl());
-            payment.setAttemptedAt(toLocalDateTime(invoice.getCreated()));
-            payment.setPaidAt(toLocalDateTime(invoice.getStatusTransitions().getPaidAt()));
+            payment.setInvoicePdfUrl(fullInvoice.getInvoicePdf());
+            payment.setHostedInvoiceUrl(fullInvoice.getHostedInvoiceUrl());
+            payment.setAttemptedAt(toLocalDateTime(fullInvoice.getCreated()));
+            payment.setPaidAt(toLocalDateTime(fullInvoice.getStatusTransitions().getPaidAt()));
 
             paymentHistoryRepository.save(payment);
 
-            log.info("Recorded successful payment for invoice {}", invoice.getId());
+            log.info("Recorded successful payment for invoice {}", fullInvoice.getId());
 
         } catch (Exception e) {
             log.error("Error handling invoice payment success", e);
@@ -718,12 +780,42 @@ public class StripeService {
     /**
      * Update subscription quantities (accounts and riders)
      * Allows customers to upgrade/downgrade their plan
+     *
+     * VALIDACIÓN DE DOWNGRADE:
+     * - Si el usuario intenta reducir riders a menos de los que tiene actualmente en RiTrack, se bloquea
      */
     @Transactional
     public void updateSubscriptionQuantities(Long tenantId, Integer newAccountQuantity, Integer newRidersQuantity) {
         try {
             StripeSubscriptionEntity subscription = subscriptionRepository.findByTenantId(tenantId)
                     .orElseThrow(() -> new ResourceNotFoundException("Suscripción no encontrada"));
+
+            // VALIDACIÓN: Prevenir downgrade con riders activos
+            TenantEntity tenant = subscription.getTenant();
+            if (tenant.getRidersConfig() != null) {
+                Integer currentLimit = tenant.getRidersConfig().getRiderLimit();
+
+                // Si está intentando reducir riders, validar con RiTrack
+                if (currentLimit != null && newRidersQuantity < currentLimit) {
+                    log.info("Tenant {}: Intentando reducir riders de {} a {}, validando con RiTrack...",
+                            tenantId, currentLimit, newRidersQuantity);
+
+                    // Consultar a RiTrack cuántos riders tiene actualmente
+                    Integer actualRiderCount = getRealRiderCountFromRiTrack(tenant);
+
+                    if (actualRiderCount != null && newRidersQuantity < actualRiderCount) {
+                        log.error("Tenant {}: DOWNGRADE BLOQUEADO - Tiene {} riders activos pero intenta reducir a {}",
+                                tenantId, actualRiderCount, newRidersQuantity);
+
+                        throw new IllegalStateException(
+                                String.format(
+                                        "No puedes reducir el límite de riders a %d porque actualmente tienes %d riders activos.",
+                                        newRidersQuantity, actualRiderCount
+                                )
+                        );
+                    }
+                }
+            }
 
             Subscription stripeSubscription = Subscription.retrieve(subscription.getStripeSubscriptionId());
 
@@ -802,6 +894,46 @@ public class StripeService {
         tenantRidersConfigRepository.save(ridersConfig);
 
         log.info("Updated tenant {} limits: {} accounts, {} riders", tenantId, accountQuantity, ridersQuantity);
+
+        // Publish event - RiTrack will be notified AFTER transaction commits
+        log.info("Publishing TenantLimitsUpdatedEvent for tenant {}", tenantId);
+        eventPublisher.publishEvent(new TenantLimitsUpdatedEvent(tenantId, accountQuantity, ridersQuantity));
+    }
+
+    /**
+     * Get the real rider count from RiTrack for a tenant.
+     * Used to validate subscription downgrades.
+     *
+     * @param tenant Tenant entity with hargosTenantId
+     * @return Actual rider count from RiTrack, or null if RiTrack is unreachable
+     */
+    private Integer getRealRiderCountFromRiTrack(TenantEntity tenant) {
+        if (tenant.getId() == null) {
+            log.warn("Cannot query RiTrack: tenant ID is null");
+            return null;
+        }
+
+        try {
+            String url = ritrackBaseUrl + "/api/ritrack-public/tenant/" + tenant.getId() + "/rider-count";
+            log.debug("Querying RiTrack for rider count: {}", url);
+
+            ResponseEntity<RiderCountResponse> response = restTemplate.getForEntity(url, RiderCountResponse.class);
+
+            if (response.getBody() != null) {
+                Integer count = response.getBody().riderCount();
+                log.info("RiTrack reports {} riders for tenant {}", count, tenant.getId());
+                return count;
+            }
+
+            log.warn("RiTrack returned null response for tenant {}", tenant.getId());
+            return null;
+
+        } catch (Exception e) {
+            log.error("Failed to query RiTrack for tenant {}: {}", tenant.getId(), e.getMessage());
+            // Return null to allow downgrade if RiTrack is unreachable (fail-open strategy)
+            // Alternative: throw exception to fail-closed (more strict)
+            return null;
+        }
     }
 
     /**
@@ -815,5 +947,13 @@ public class StripeService {
                 Instant.ofEpochSecond(unixTimestamp),
                 ZoneId.systemDefault()
         );
+    }
+
+    // ==================== DTOs for RiTrack Communication ====================
+
+    /**
+     * Response from RiTrack public API for rider count
+     */
+    private record RiderCountResponse(Integer riderCount, String message) {
     }
 }
