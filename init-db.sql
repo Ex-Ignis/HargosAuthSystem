@@ -462,7 +462,7 @@ ON CONFLICT (app_id, organization_id, name) DO NOTHING;
 -- Hash generado con BCryptPasswordEncoder
 INSERT INTO auth.users (email, password_hash, full_name, is_active, email_verified)
 VALUES
-    ('admin@hargos.es', '$2a$10$5kCXZvqF7YGJ5w.mJNNKKeKJ7x8xB0yOXYN9F2bXx8.8ZN9xC8XYK', 'Hargos Super Admin', true, true)
+    ('admin@hargos.es', '$2a$10$BSnnbo7Fx7qspXMso7qBbOfpqTBS/xKF3a93a768KgeijcJAi.0Iu', 'Hargos Super Admin', true, true)
 ON CONFLICT (email) DO NOTHING;
 
 -- ==============================================
