@@ -428,10 +428,11 @@ CREATE INDEX IF NOT EXISTS idx_limit_exceeded_notifications_detected_at ON auth.
 -- SECTION 9: SEED DATA
 -- ==============================================
 
--- Insert default app
+-- Insert default apps
 INSERT INTO auth.apps (name, description, is_active)
 VALUES
-    ('SYSTEM', 'Sistema Interno Hargos - Administración Global', true)
+    ('SYSTEM', 'Sistema Interno Hargos - Administración Global', true),
+    ('RiTrack', 'Sistema de Gestión de Riders - Monitoreo y Control', true)
 ON CONFLICT (name) DO NOTHING;
 
 -- Insert default organization
