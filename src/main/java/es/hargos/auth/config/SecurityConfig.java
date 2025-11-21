@@ -88,12 +88,16 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
 
-        // Allowed origins - configure in application.properties
-        configuration.setAllowedOrigins(Arrays.asList(
+        // Allowed origin patterns - supports wildcards
+        configuration.setAllowedOriginPatterns(Arrays.asList(
                 "http://localhost:3000",
                 "http://localhost:5173",
                 "https://hargos.es",
-                "https://*.hargos.es"
+                "https://*.hargos.es",
+                "http://dev.hargos.es",
+                "https://dev.hargos.es",
+                "http://134.209.248.14",
+                "https://134.209.248.14"
         ));
 
         // Allowed methods
