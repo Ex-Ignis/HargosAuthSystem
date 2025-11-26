@@ -94,8 +94,6 @@ public class SecurityConfig {
                 "http://localhost:5173",
                 "https://hargos.es",
                 "https://*.hargos.es",
-                "http://dev.hargos.es",
-                "https://dev.hargos.es",
                 "http://134.209.248.14",
                 "https://134.209.248.14"
         ));

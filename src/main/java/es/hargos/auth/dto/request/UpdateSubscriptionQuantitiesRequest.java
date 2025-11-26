@@ -19,11 +19,11 @@ public class UpdateSubscriptionQuantitiesRequest {
 
     @NotNull(message = "La cantidad de cuentas es requerida")
     @Min(value = 1, message = "Mínimo 1 cuenta de usuario")
-    @Max(value = 10, message = "Máximo 10 cuentas de usuario")
+    @Max(value = 20, message = "Máximo 20 cuentas de usuario")
     private Integer accountQuantity;
 
     @NotNull(message = "La cantidad de riders es requerida")
     @Min(value = 50, message = "Mínimo 50 riders")
-    @Max(value = 1000, message = "Máximo 1000 riders. Para más de 1000 riders, contacta con nosotros")
+    @Max(value = 2000, message = "Máximo 2000 riders. Para más de 2000 riders, contacta con nosotros")
     private Integer ridersQuantity;
 }
