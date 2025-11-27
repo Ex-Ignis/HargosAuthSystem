@@ -35,6 +35,16 @@ public class UserEntity {
     @Column(name = "email_verified")
     private Boolean emailVerified = false;
 
+    // Google OAuth2 fields
+    @Column(name = "google_id", unique = true)
+    private String googleId;
+
+    @Column(name = "auth_provider")
+    private String authProvider = "LOCAL"; // LOCAL or GOOGLE
+
+    @Column(name = "profile_picture_url", length = 500)
+    private String profilePictureUrl;
+
     @Column(name = "email_verification_token", length = 500)
     private String emailVerificationToken;
 

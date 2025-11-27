@@ -2,6 +2,7 @@ package es.hargos.auth.controller;
 
 import es.hargos.auth.dto.request.AcceptInvitationRequest;
 import es.hargos.auth.dto.request.ForgotPasswordRequest;
+import es.hargos.auth.dto.request.GoogleLoginRequest;
 import es.hargos.auth.dto.request.LoginRequest;
 import es.hargos.auth.dto.request.RefreshTokenRequest;
 import es.hargos.auth.dto.request.RegisterRequest;
@@ -12,6 +13,7 @@ import es.hargos.auth.dto.response.MessageResponse;
 import es.hargos.auth.dto.response.TokenValidationResponse;
 import es.hargos.auth.dto.response.UserResponse;
 import es.hargos.auth.service.AuthService;
+import es.hargos.auth.service.GoogleAuthService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -26,6 +28,7 @@ import org.springframework.web.bind.annotation.*;
 public class AuthController {
 
     private final AuthService authService;
+    private final GoogleAuthService googleAuthService;
 
     /**
      * Registro simple sin tenant (para clientes que luego comprarán productos)
@@ -96,6 +99,35 @@ public class AuthController {
     public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest request, HttpServletRequest httpRequest) {
         LoginResponse response = authService.login(request, httpRequest);
         return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Login con Google OAuth2
+     * Recibe el ID token de Google y devuelve tokens JWT propios
+     */
+    @PostMapping("/google")
+    public ResponseEntity<LoginResponse> loginWithGoogle(
+            @Valid @RequestBody GoogleLoginRequest request,
+            HttpServletRequest httpRequest) {
+        String userAgent = httpRequest.getHeader("User-Agent");
+        String ipAddress = getClientIpAddress(httpRequest);
+        LoginResponse response = googleAuthService.authenticateWithGoogle(request.getIdToken(), userAgent, ipAddress);
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Obtiene la IP real del cliente, considerando proxies
+     */
+    private String getClientIpAddress(HttpServletRequest request) {
+        String xForwardedFor = request.getHeader("X-Forwarded-For");
+        if (xForwardedFor != null && !xForwardedFor.isEmpty()) {
+            return xForwardedFor.split(",")[0].trim();
+        }
+        String xRealIp = request.getHeader("X-Real-IP");
+        if (xRealIp != null && !xRealIp.isEmpty()) {
+            return xRealIp;
+        }
+        return request.getRemoteAddr();
     }
 
     @PostMapping("/refresh")
