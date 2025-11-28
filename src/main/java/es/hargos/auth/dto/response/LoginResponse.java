@@ -41,6 +41,8 @@ public class LoginResponse {
                     .id(userResponse.getId())
                     .email(userResponse.getEmail())
                     .fullName(userResponse.getFullName())
+                    .profilePictureUrl(userResponse.getProfilePictureUrl())
+                    .authProvider(userResponse.getAuthProvider())
                     .build();
         }
     }

@@ -267,6 +267,8 @@ public class AuthService {
                 user.getFullName(),
                 user.getIsActive(),
                 user.getEmailVerified(),
+                user.getProfilePictureUrl(),
+                user.getAuthProvider(),
                 tenants,
                 user.getCreatedAt()
         );

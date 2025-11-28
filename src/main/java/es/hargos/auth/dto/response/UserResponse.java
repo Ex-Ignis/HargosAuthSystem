@@ -16,6 +16,8 @@ public class UserResponse {
     private String fullName;
     private Boolean isActive;
     private Boolean emailVerified;
+    private String profilePictureUrl;
+    private String authProvider;
     private List<TenantRoleResponse> tenants;
     private LocalDateTime createdAt;
 }

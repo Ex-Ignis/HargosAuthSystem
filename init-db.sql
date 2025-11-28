@@ -21,12 +21,20 @@ CREATE TABLE IF NOT EXISTS auth.users (
     full_name VARCHAR(255),
     is_active BOOLEAN DEFAULT TRUE,
     email_verified BOOLEAN DEFAULT FALSE,
+
+    -- Google OAuth2 fields
+    google_id VARCHAR(255) UNIQUE,
+    auth_provider VARCHAR(20) DEFAULT 'LOCAL',
+    profile_picture_url VARCHAR(500),
+
     email_verification_token VARCHAR(500),
     email_verification_expires_at TIMESTAMP,
     password_reset_token VARCHAR(500),
     password_reset_expires_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT chk_auth_provider CHECK (auth_provider IN ('LOCAL', 'GOOGLE'))
 );
 
 -- ==============================================
@@ -387,6 +395,7 @@ COMMENT ON COLUMN auth.limit_exceeded_notifications.excess_count IS 'Number of r
 
 CREATE INDEX IF NOT EXISTS idx_users_email ON auth.users(email);
 CREATE INDEX IF NOT EXISTS idx_users_is_active ON auth.users(is_active);
+CREATE INDEX IF NOT EXISTS idx_users_google_id ON auth.users(google_id);
 CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON auth.refresh_tokens(user_id);
 CREATE INDEX IF NOT EXISTS idx_refresh_tokens_token ON auth.refresh_tokens(token);
 CREATE INDEX IF NOT EXISTS idx_refresh_tokens_expires_at ON auth.refresh_tokens(expires_at);
