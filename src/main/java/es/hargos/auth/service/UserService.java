@@ -238,6 +238,8 @@ public class UserService {
                 user.getFullName(),
                 user.getIsActive(),
                 user.getEmailVerified(),
+                user.getProfilePictureUrl(),
+                user.getAuthProvider(),
                 tenants,
                 user.getCreatedAt()
         );

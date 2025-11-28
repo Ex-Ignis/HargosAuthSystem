@@ -92,6 +92,8 @@ public class AuthService {
                 user.getFullName(),
                 user.getIsActive(),
                 user.getEmailVerified(),
+                user.getProfilePictureUrl(),
+                user.getAuthProvider(),
                 new ArrayList<>(), // Sin tenants asignados
                 user.getCreatedAt()
         );
