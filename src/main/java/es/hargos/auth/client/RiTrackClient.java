@@ -24,9 +24,6 @@ public class RiTrackClient {
     @Value("${ritrack.base-url:http://localhost:8080}")
     private String ritrackBaseUrl;
 
-    @Value("${ritrack.internal.api-key:}")
-    private String internalApiKey;
-
     public RiTrackClient() {
         this.restTemplate = new RestTemplate();
     }
@@ -39,16 +36,10 @@ public class RiTrackClient {
      * @return true si se actualizó correctamente, false en caso de error
      */
     public boolean updateTenantSettings(Long hargosTenantId, Map<String, Object> settings) {
-        if (internalApiKey == null || internalApiKey.isEmpty()) {
-            logger.warn("RiTrack internal API key no configurada");
-            return false;
-        }
-
         try {
             String url = ritrackBaseUrl + "/internal/admin/tenants/" + hargosTenantId + "/settings";
 
             HttpHeaders headers = new HttpHeaders();
-            headers.set("X-Internal-Api-Key", internalApiKey);
             headers.setContentType(MediaType.APPLICATION_JSON);
 
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(settings, headers);
@@ -86,16 +77,10 @@ public class RiTrackClient {
      */
     @SuppressWarnings("unchecked")
     public Map<String, Object> getTenantConfig(Long hargosTenantId) {
-        if (internalApiKey == null || internalApiKey.isEmpty()) {
-            logger.warn("RiTrack internal API key no configurada");
-            return null;
-        }
-
         try {
             String url = ritrackBaseUrl + "/internal/admin/tenants/" + hargosTenantId + "/config";
 
             HttpHeaders headers = new HttpHeaders();
-            headers.set("X-Internal-Api-Key", internalApiKey);
             headers.setContentType(MediaType.APPLICATION_JSON);
 
             HttpEntity<Void> entity = new HttpEntity<>(headers);
@@ -140,16 +125,10 @@ public class RiTrackClient {
      */
     @SuppressWarnings("unchecked")
     public List<Map<String, Object>> getTenantWarnings(Long hargosTenantId) {
-        if (internalApiKey == null || internalApiKey.isEmpty()) {
-            logger.warn("RiTrack internal API key no configurada");
-            return null;
-        }
-
         try {
             String url = ritrackBaseUrl + "/internal/admin/tenants/" + hargosTenantId + "/warnings";
 
             HttpHeaders headers = new HttpHeaders();
-            headers.set("X-Internal-Api-Key", internalApiKey);
             headers.setContentType(MediaType.APPLICATION_JSON);
 
             HttpEntity<Void> entity = new HttpEntity<>(headers);
@@ -189,16 +168,10 @@ public class RiTrackClient {
      */
     @SuppressWarnings("unchecked")
     public Map<String, Object> createWarning(Long hargosTenantId, Map<String, Object> warningData) {
-        if (internalApiKey == null || internalApiKey.isEmpty()) {
-            logger.warn("RiTrack internal API key no configurada");
-            return null;
-        }
-
         try {
             String url = ritrackBaseUrl + "/internal/admin/tenants/" + hargosTenantId + "/warnings";
 
             HttpHeaders headers = new HttpHeaders();
-            headers.set("X-Internal-Api-Key", internalApiKey);
             headers.setContentType(MediaType.APPLICATION_JSON);
 
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(warningData, headers);
@@ -236,16 +209,10 @@ public class RiTrackClient {
      */
     @SuppressWarnings("unchecked")
     public Map<String, Object> updateWarning(Long hargosTenantId, Long warningId, Map<String, Object> warningData) {
-        if (internalApiKey == null || internalApiKey.isEmpty()) {
-            logger.warn("RiTrack internal API key no configurada");
-            return null;
-        }
-
         try {
             String url = ritrackBaseUrl + "/internal/admin/tenants/" + hargosTenantId + "/warnings/" + warningId;
 
             HttpHeaders headers = new HttpHeaders();
-            headers.set("X-Internal-Api-Key", internalApiKey);
             headers.setContentType(MediaType.APPLICATION_JSON);
 
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(warningData, headers);
@@ -281,16 +248,10 @@ public class RiTrackClient {
      * @return true si se creó correctamente (o ya existía), false si error
      */
     public boolean createTenant(Long hargosTenantId, String tenantName) {
-        if (internalApiKey == null || internalApiKey.isEmpty()) {
-            logger.warn("RiTrack internal API key no configurada");
-            return false;
-        }
-
         try {
             String url = ritrackBaseUrl + "/internal/admin/tenants";
 
             HttpHeaders headers = new HttpHeaders();
-            headers.set("X-Internal-Api-Key", internalApiKey);
             headers.setContentType(MediaType.APPLICATION_JSON);
 
             Map<String, Object> body = Map.of(
@@ -331,16 +292,10 @@ public class RiTrackClient {
      * @return true si se eliminó correctamente (o no existía), false si error
      */
     public boolean deleteTenant(Long hargosTenantId) {
-        if (internalApiKey == null || internalApiKey.isEmpty()) {
-            logger.warn("RiTrack internal API key no configurada");
-            return false;
-        }
-
         try {
             String url = ritrackBaseUrl + "/internal/admin/tenants/" + hargosTenantId;
 
             HttpHeaders headers = new HttpHeaders();
-            headers.set("X-Internal-Api-Key", internalApiKey);
             headers.setContentType(MediaType.APPLICATION_JSON);
 
             HttpEntity<Void> entity = new HttpEntity<>(headers);
@@ -380,16 +335,10 @@ public class RiTrackClient {
      * @return true si se eliminó correctamente, false si error
      */
     public boolean deleteWarning(Long hargosTenantId, Long warningId) {
-        if (internalApiKey == null || internalApiKey.isEmpty()) {
-            logger.warn("RiTrack internal API key no configurada");
-            return false;
-        }
-
         try {
             String url = ritrackBaseUrl + "/internal/admin/tenants/" + hargosTenantId + "/warnings/" + warningId;
 
             HttpHeaders headers = new HttpHeaders();
-            headers.set("X-Internal-Api-Key", internalApiKey);
             headers.setContentType(MediaType.APPLICATION_JSON);
 
             HttpEntity<Void> entity = new HttpEntity<>(headers);
