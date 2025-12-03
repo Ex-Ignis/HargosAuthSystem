@@ -51,30 +51,32 @@ public class UserService {
             isNewUser = true;
         }
 
-        // Validate and assign tenants
+        // Validate and assign tenants (opcional - igual que registro normal)
         List<UserTenantRoleEntity> userTenantRoles = new java.util.ArrayList<>();
 
-        for (CreateUserRequest.TenantRoleAssignment assignment : request.getTenantRoles()) {
-            TenantEntity tenant = tenantRepository.findById(assignment.getTenantId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Tenant no encontrado con ID: " + assignment.getTenantId()));
+        if (request.getTenantRoles() != null) {
+            for (CreateUserRequest.TenantRoleAssignment assignment : request.getTenantRoles()) {
+                TenantEntity tenant = tenantRepository.findById(assignment.getTenantId())
+                        .orElseThrow(() -> new ResourceNotFoundException("Tenant no encontrado con ID: " + assignment.getTenantId()));
 
-            // Check if user is already assigned to this tenant
-            if (userTenantRoleRepository.findByUserAndTenant(user, tenant).isPresent()) {
-                throw new DuplicateResourceException("Usuario ya asignado al tenant: " + tenant.getName());
+                // Check if user is already assigned to this tenant
+                if (userTenantRoleRepository.findByUserAndTenant(user, tenant).isPresent()) {
+                    throw new DuplicateResourceException("Usuario ya asignado al tenant: " + tenant.getName());
+                }
+
+                // Validate account limit
+                long currentCount = userTenantRoleRepository.countByTenant(tenant);
+                if (currentCount >= tenant.getAccountLimit()) {
+                    throw new IllegalStateException("Tenant '" + tenant.getName() + "' ha alcanzado el limite de cuentas (" + tenant.getAccountLimit() + ")");
+                }
+
+                UserTenantRoleEntity userTenantRole = new UserTenantRoleEntity();
+                userTenantRole.setUser(user);
+                userTenantRole.setTenant(tenant);
+                userTenantRole.setRole(assignment.getRole());
+
+                userTenantRoles.add(userTenantRoleRepository.save(userTenantRole));
             }
-
-            // Validate account limit
-            long currentCount = userTenantRoleRepository.countByTenant(tenant);
-            if (currentCount >= tenant.getAccountLimit()) {
-                throw new IllegalStateException("Tenant '" + tenant.getName() + "' ha alcanzado el limite de cuentas (" + tenant.getAccountLimit() + ")");
-            }
-
-            UserTenantRoleEntity userTenantRole = new UserTenantRoleEntity();
-            userTenantRole.setUser(user);
-            userTenantRole.setTenant(tenant);
-            userTenantRole.setRole(assignment.getRole());
-
-            userTenantRoles.add(userTenantRoleRepository.save(userTenantRole));
         }
 
         return mapToUserResponse(user, userTenantRoles);

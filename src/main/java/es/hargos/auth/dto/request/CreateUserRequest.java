@@ -3,7 +3,6 @@ package es.hargos.auth.dto.request;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
 
@@ -23,7 +22,6 @@ public class CreateUserRequest {
     @NotBlank(message = "Nombre Completo es obligatorio")
     private String fullName;
 
-    @NotEmpty(message = "Debe asignar al menos un tenant")
     @Valid
     private List<TenantRoleAssignment> tenantRoles;
 

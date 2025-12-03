@@ -1,5 +1,6 @@
 package es.hargos.auth.controller;
 
+import es.hargos.auth.client.RiTrackClient;
 import es.hargos.auth.dto.request.*;
 import es.hargos.auth.dto.response.MessageResponse;
 import es.hargos.auth.dto.response.OrganizationResponse;
@@ -16,6 +17,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/admin")
@@ -26,6 +28,7 @@ public class AdminController {
     private final UserService userService;
     private final OrganizationService organizationService;
     private final TenantService tenantService;
+    private final RiTrackClient riTrackClient;
 
     // ==================== USER MANAGEMENT ====================
     @PostMapping("/users")
@@ -198,5 +201,126 @@ public class AdminController {
     public ResponseEntity<MessageResponse> deleteTenant(@PathVariable Long id) {
         tenantService.deleteTenant(id);
         return ResponseEntity.ok(new MessageResponse("Tenant eliminado exitosamente"));
+    }
+
+    /**
+     * Actualiza configuración de app externa (ej: RiTrack) para un tenant.
+     * Solo para tenants de tipo RiTrack.
+     */
+    @PutMapping("/tenants/{id}/app-config")
+    public ResponseEntity<?> updateTenantAppConfig(
+            @PathVariable Long id,
+            @RequestBody Map<String, Object> appConfig) {
+
+        // Verificar que el tenant existe
+        TenantResponse tenant = tenantService.getTenantById(id);
+
+        // Verificar que es un tenant de RiTrack
+        if (!"RiTrack".equals(tenant.getAppName())) {
+            return ResponseEntity.badRequest()
+                    .body(new MessageResponse("Solo se puede actualizar app config para tenants de RiTrack"));
+        }
+
+        // Enviar actualización a RiTrack
+        boolean success = riTrackClient.updateTenantSettings(id, appConfig);
+
+        if (success) {
+            return ResponseEntity.ok(new MessageResponse("Configuración actualizada exitosamente"));
+        } else {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new MessageResponse("Error actualizando configuración en RiTrack"));
+        }
+    }
+
+    // ==================== RIDER LIMIT WARNINGS ====================
+
+    /**
+     * Obtiene todos los warnings de límite de riders de un tenant.
+     */
+    @GetMapping("/tenants/{id}/warnings")
+    public ResponseEntity<?> getTenantWarnings(@PathVariable Long id) {
+        // Verificar que el tenant existe y es de RiTrack
+        TenantResponse tenant = tenantService.getTenantById(id);
+        if (!"RiTrack".equals(tenant.getAppName())) {
+            return ResponseEntity.badRequest()
+                    .body(new MessageResponse("Solo tenants de RiTrack tienen warnings"));
+        }
+
+        List<Map<String, Object>> warnings = riTrackClient.getTenantWarnings(id);
+        if (warnings != null) {
+            return ResponseEntity.ok(Map.of("warnings", warnings));
+        } else {
+            return ResponseEntity.ok(Map.of("warnings", List.of()));
+        }
+    }
+
+    /**
+     * Crea un nuevo warning para un tenant.
+     */
+    @PostMapping("/tenants/{id}/warnings")
+    public ResponseEntity<?> createTenantWarning(
+            @PathVariable Long id,
+            @RequestBody Map<String, Object> warningData) {
+
+        TenantResponse tenant = tenantService.getTenantById(id);
+        if (!"RiTrack".equals(tenant.getAppName())) {
+            return ResponseEntity.badRequest()
+                    .body(new MessageResponse("Solo tenants de RiTrack pueden tener warnings"));
+        }
+
+        Map<String, Object> created = riTrackClient.createWarning(id, warningData);
+        if (created != null) {
+            return ResponseEntity.ok(created);
+        } else {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new MessageResponse("Error creando warning en RiTrack"));
+        }
+    }
+
+    /**
+     * Actualiza un warning existente.
+     */
+    @PutMapping("/tenants/{id}/warnings/{warningId}")
+    public ResponseEntity<?> updateTenantWarning(
+            @PathVariable Long id,
+            @PathVariable Long warningId,
+            @RequestBody Map<String, Object> warningData) {
+
+        TenantResponse tenant = tenantService.getTenantById(id);
+        if (!"RiTrack".equals(tenant.getAppName())) {
+            return ResponseEntity.badRequest()
+                    .body(new MessageResponse("Solo tenants de RiTrack pueden tener warnings"));
+        }
+
+        Map<String, Object> updated = riTrackClient.updateWarning(id, warningId, warningData);
+        if (updated != null) {
+            return ResponseEntity.ok(updated);
+        } else {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new MessageResponse("Error actualizando warning en RiTrack"));
+        }
+    }
+
+    /**
+     * Elimina un warning.
+     */
+    @DeleteMapping("/tenants/{id}/warnings/{warningId}")
+    public ResponseEntity<?> deleteTenantWarning(
+            @PathVariable Long id,
+            @PathVariable Long warningId) {
+
+        TenantResponse tenant = tenantService.getTenantById(id);
+        if (!"RiTrack".equals(tenant.getAppName())) {
+            return ResponseEntity.badRequest()
+                    .body(new MessageResponse("Solo tenants de RiTrack pueden tener warnings"));
+        }
+
+        boolean deleted = riTrackClient.deleteWarning(id, warningId);
+        if (deleted) {
+            return ResponseEntity.ok(new MessageResponse("Warning eliminado exitosamente"));
+        } else {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new MessageResponse("Error eliminando warning en RiTrack"));
+        }
     }
 }

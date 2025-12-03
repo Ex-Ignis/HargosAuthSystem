@@ -1,5 +1,6 @@
 package es.hargos.auth.service;
 
+import es.hargos.auth.client.RiTrackClient;
 import es.hargos.auth.dto.request.*;
 import es.hargos.auth.dto.response.*;
 import es.hargos.auth.entity.*;
@@ -7,23 +8,30 @@ import es.hargos.auth.exception.DuplicateResourceException;
 import es.hargos.auth.exception.ResourceNotFoundException;
 import es.hargos.auth.repository.*;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class TenantService {
 
+    private static final Logger logger = LoggerFactory.getLogger(TenantService.class);
+
     private final TenantRepository tenantRepository;
     private final AppRepository appRepository;
     private final OrganizationRepository organizationRepository;
     private final UserTenantRoleRepository userTenantRoleRepository;
+    private final UserRepository userRepository;
     private final TenantRidersConfigRepository tenantRidersConfigRepository;
     private final TenantWarehouseConfigRepository tenantWarehouseConfigRepository;
     private final TenantFleetConfigRepository tenantFleetConfigRepository;
+    private final RiTrackClient riTrackClient;
 
     @Transactional
     public TenantResponse createTenant(CreateTenantRequest request) {
@@ -46,6 +54,52 @@ public class TenantService {
         tenant.setIsActive(true);
 
         tenant = tenantRepository.save(tenant);
+        logger.info("Tenant creado: {} (ID: {})", tenant.getName(), tenant.getId());
+
+        // Si es RiTrack, crear el tenant y schema en RiTrack
+        if ("RiTrack".equals(app.getName())) {
+            logger.info("Creando tenant {} en RiTrack con schema...", tenant.getId());
+            try {
+                boolean created = riTrackClient.createTenant(tenant.getId(), tenant.getName());
+                if (created) {
+                    logger.info("Tenant {} creado en RiTrack con schema correctamente", tenant.getId());
+                } else {
+                    logger.warn("No se pudo crear el tenant {} en RiTrack - el usuario deberá completar el onboarding manualmente", tenant.getId());
+                }
+            } catch (Exception e) {
+                logger.error("Error creando tenant {} en RiTrack: {} - el usuario deberá completar el onboarding manualmente",
+                        tenant.getId(), e.getMessage());
+            }
+
+            // Si se especificó riderLimit, crear la configuración de riders
+            if (request.getRiderLimit() != null) {
+                TenantRidersConfigEntity ridersConfig = new TenantRidersConfigEntity();
+                ridersConfig.setTenant(tenant);
+                ridersConfig.setRiderLimit(request.getRiderLimit());
+                ridersConfig.setRealTimeTracking(true);
+                ridersConfig.setSmsNotifications(false);
+                tenantRidersConfigRepository.save(ridersConfig);
+                logger.info("Configuración de riders creada para tenant {} con límite: {}", tenant.getId(), request.getRiderLimit());
+            }
+        }
+
+        // Si se especificó un adminUserId, asignar el usuario como TENANT_ADMIN
+        if (request.getAdminUserId() != null) {
+            UserEntity adminUser = userRepository.findById(request.getAdminUserId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Usuario admin no encontrado con ID: " + request.getAdminUserId()));
+
+            // Verificar que el usuario no esté ya asignado a este tenant
+            if (userTenantRoleRepository.findByUserAndTenant(adminUser, tenant).isEmpty()) {
+                UserTenantRoleEntity adminRole = new UserTenantRoleEntity();
+                adminRole.setUser(adminUser);
+                adminRole.setTenant(tenant);
+                adminRole.setRole("TENANT_ADMIN");
+                userTenantRoleRepository.save(adminRole);
+                logger.info("Usuario {} asignado como TENANT_ADMIN del tenant {}", adminUser.getEmail(), tenant.getId());
+            } else {
+                logger.warn("Usuario {} ya estaba asignado al tenant {}", adminUser.getEmail(), tenant.getId());
+            }
+        }
 
         return mapToResponse(tenant);
     }
@@ -61,7 +115,8 @@ public class TenantService {
     public TenantResponse getTenantById(Long id) {
         TenantEntity tenant = tenantRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Tenant no encontrado"));
-        return mapToResponse(tenant);
+        // Incluir configuración externa (ej: RiTrack) para vista detallada
+        return mapToResponse(tenant, true);
     }
 
     @Transactional(readOnly = true)
@@ -78,10 +133,38 @@ public class TenantService {
     public void deleteTenant(Long id) {
         TenantEntity tenant = tenantRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Tenant no encontrado"));
+
+        // Si es un tenant de RiTrack, eliminar también el schema en RiTrack
+        if ("RiTrack".equals(tenant.getApp().getName())) {
+            logger.info("Eliminando tenant RiTrack {} - llamando a RiTrack para eliminar schema", id);
+            try {
+                boolean deleted = riTrackClient.deleteTenant(id);
+                if (deleted) {
+                    logger.info("Schema de RiTrack eliminado correctamente para tenant {}", id);
+                } else {
+                    logger.warn("No se pudo eliminar el schema de RiTrack para tenant {} - continuando con eliminación local", id);
+                }
+            } catch (Exception e) {
+                logger.error("Error eliminando schema de RiTrack para tenant {}: {} - continuando con eliminación local",
+                        id, e.getMessage());
+            }
+        }
+
         tenantRepository.delete(tenant);
+        logger.info("Tenant {} eliminado de HargosAuth", id);
     }
 
     private TenantResponse mapToResponse(TenantEntity tenant) {
+        return mapToResponse(tenant, false);
+    }
+
+    /**
+     * Mapea un tenant a su DTO de respuesta.
+     * @param tenant El tenant a mapear
+     * @param includeExternalConfig Si true, llama a servicios externos (RiTrack) para obtener config dinámica
+     */
+    @SuppressWarnings("unchecked")
+    private TenantResponse mapToResponse(TenantEntity tenant, boolean includeExternalConfig) {
         long currentAccountCount = userTenantRoleRepository.countByTenant(tenant);
 
         TenantResponse response = new TenantResponse();
@@ -101,17 +184,47 @@ public class TenantService {
         String appName = tenant.getApp().getName();
 
         if ("RiTrack".equals(appName)) {
+            // Cargar config local de HargosAuth (límites de suscripción)
             tenantRidersConfigRepository.findByTenantId(tenant.getId())
                     .ifPresent(config -> {
                         RidersConfigDTO ridersConfig = new RidersConfigDTO();
                         ridersConfig.setRiderLimit(config.getRiderLimit());
-                        ridersConfig.setCurrentRiderCount(null); // Lo enviará el droplet
+                        ridersConfig.setCurrentRiderCount(null);
                         ridersConfig.setDeliveryZones(config.getDeliveryZones());
                         ridersConfig.setMaxDailyDeliveries(config.getMaxDailyDeliveries());
                         ridersConfig.setRealTimeTracking(config.getRealTimeTracking());
                         ridersConfig.setSmsNotifications(config.getSmsNotifications());
                         response.setRidersConfig(ridersConfig);
                     });
+
+            // Si se solicita, cargar config dinámica desde RiTrack
+            if (includeExternalConfig) {
+                try {
+                    Map<String, Object> ritrackConfig = riTrackClient.getTenantConfig(tenant.getId());
+                    if (ritrackConfig != null) {
+                        // Guardar todos los settings dinámicos
+                        Object settings = ritrackConfig.get("settings");
+                        if (settings instanceof Map) {
+                            response.setAppConfig((Map<String, Object>) settings);
+                        }
+
+                        // Obtener conteo actual de riders
+                        Object riderCount = ritrackConfig.get("currentRiderCount");
+                        if (riderCount instanceof Integer) {
+                            response.setCurrentRiderCount((Integer) riderCount);
+                            // También actualizar el ridersConfig si existe
+                            if (response.getRidersConfig() != null) {
+                                response.getRidersConfig().setCurrentRiderCount(((Integer) riderCount).longValue());
+                            }
+                        }
+
+                        logger.debug("Config de RiTrack obtenida para tenant {}", tenant.getId());
+                    }
+                } catch (Exception e) {
+                    logger.warn("No se pudo obtener config de RiTrack para tenant {}: {}",
+                            tenant.getId(), e.getMessage());
+                }
+            }
         } else if ("Warehouse Management".equals(appName)) {
             tenantWarehouseConfigRepository.findByTenantId(tenant.getId())
                     .ifPresent(config -> {

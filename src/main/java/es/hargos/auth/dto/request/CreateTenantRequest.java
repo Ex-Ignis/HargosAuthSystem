@@ -22,4 +22,11 @@ public class CreateTenantRequest {
     @NotNull(message = "Limite de cuentas es obligatorio")
     @Min(value = 1, message = "El limite minimo de cuentas es 1")
     private Integer accountLimit;
+
+    // Campos opcionales para RiTrack
+    @Min(value = 0, message = "El limite de riders debe ser 0 o mayor")
+    private Integer riderLimit;
+
+    // Usuario a asignar como TENANT_ADMIN (opcional)
+    private Long adminUserId;
 }
