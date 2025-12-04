@@ -58,4 +58,32 @@ public interface UserSessionRepository extends JpaRepository<UserSessionEntity, 
            "WHERE s.accessTokenJti = :jti " +
            "AND s.isRevoked = false")
     Optional<UserSessionEntity> findActiveSessionByJti(@Param("jti") String jti);
+
+    /**
+     * Encuentra todas las sesiones activas de todos los usuarios (para admin)
+     * Sesiones no revocadas con actividad reciente
+     */
+    @Query("SELECT s FROM UserSessionEntity s " +
+           "JOIN FETCH s.user u " +
+           "WHERE s.isRevoked = false " +
+           "AND s.lastActivityAt > :since " +
+           "ORDER BY s.lastActivityAt DESC")
+    List<UserSessionEntity> findAllActiveSessions(@Param("since") LocalDateTime since);
+
+    /**
+     * Encuentra todas las sesiones no revocadas (para admin)
+     */
+    @Query("SELECT s FROM UserSessionEntity s " +
+           "JOIN FETCH s.user u " +
+           "WHERE s.isRevoked = false " +
+           "ORDER BY s.lastActivityAt DESC")
+    List<UserSessionEntity> findAllNonRevokedSessions();
+
+    /**
+     * Cuenta todas las sesiones activas del sistema
+     */
+    @Query("SELECT COUNT(s) FROM UserSessionEntity s " +
+           "WHERE s.isRevoked = false " +
+           "AND s.lastActivityAt > :since")
+    long countAllActiveSessions(@Param("since") LocalDateTime since);
 }

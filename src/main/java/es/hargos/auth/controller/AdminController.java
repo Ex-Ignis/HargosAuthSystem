@@ -2,11 +2,13 @@ package es.hargos.auth.controller;
 
 import es.hargos.auth.client.RiTrackClient;
 import es.hargos.auth.dto.request.*;
+import es.hargos.auth.dto.response.AdminSessionResponse;
 import es.hargos.auth.dto.response.MessageResponse;
 import es.hargos.auth.dto.response.OrganizationResponse;
 import es.hargos.auth.dto.response.TenantResponse;
 import es.hargos.auth.dto.response.UserResponse;
 import es.hargos.auth.service.OrganizationService;
+import es.hargos.auth.service.SessionService;
 import es.hargos.auth.service.TenantService;
 import es.hargos.auth.service.UserService;
 import jakarta.validation.Valid;
@@ -28,6 +30,7 @@ public class AdminController {
     private final UserService userService;
     private final OrganizationService organizationService;
     private final TenantService tenantService;
+    private final SessionService sessionService;
     private final RiTrackClient riTrackClient;
 
     // ==================== USER MANAGEMENT ====================
@@ -322,5 +325,53 @@ public class AdminController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(new MessageResponse("Error eliminando warning en RiTrack"));
         }
+    }
+
+    // ==================== SESSION MANAGEMENT ====================
+
+    /**
+     * Obtiene todas las sesiones activas del sistema.
+     * Sesiones activas = actividad en los ultimos 30 minutos.
+     */
+    @GetMapping("/sessions")
+    public ResponseEntity<List<AdminSessionResponse>> getAllActiveSessions() {
+        List<AdminSessionResponse> sessions = sessionService.getAllActiveSessions();
+        return ResponseEntity.ok(sessions);
+    }
+
+    /**
+     * Obtiene todas las sesiones del sistema (incluidas las inactivas pero no revocadas).
+     */
+    @GetMapping("/sessions/all")
+    public ResponseEntity<List<AdminSessionResponse>> getAllSessions() {
+        List<AdminSessionResponse> sessions = sessionService.getAllSessions();
+        return ResponseEntity.ok(sessions);
+    }
+
+    /**
+     * Obtiene estadisticas de sesiones.
+     */
+    @GetMapping("/sessions/stats")
+    public ResponseEntity<Map<String, Object>> getSessionStats() {
+        Map<String, Object> stats = sessionService.getSessionStats();
+        return ResponseEntity.ok(stats);
+    }
+
+    /**
+     * Revoca (cierra) una sesion especifica.
+     */
+    @DeleteMapping("/sessions/{sessionId}")
+    public ResponseEntity<MessageResponse> revokeSession(@PathVariable Long sessionId) {
+        sessionService.adminRevokeSession(sessionId);
+        return ResponseEntity.ok(new MessageResponse("Sesion cerrada exitosamente"));
+    }
+
+    /**
+     * Revoca todas las sesiones de un usuario especifico.
+     */
+    @DeleteMapping("/sessions/user/{userId}")
+    public ResponseEntity<MessageResponse> revokeAllUserSessions(@PathVariable Long userId) {
+        int count = sessionService.adminRevokeAllUserSessions(userId);
+        return ResponseEntity.ok(new MessageResponse("Se cerraron " + count + " sesiones del usuario"));
     }
 }
