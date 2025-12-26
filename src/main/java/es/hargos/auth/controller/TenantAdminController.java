@@ -30,7 +30,7 @@ import java.util.stream.Collectors;
 @RestController
 @RequestMapping("/api/tenant-admin")
 @RequiredArgsConstructor
-@PreAuthorize("@authz.isTenantAdmin()")
+@PreAuthorize("@authz.isAdmin()")
 public class TenantAdminController {
 
     private final UserService userService;
@@ -108,28 +108,42 @@ public class TenantAdminController {
         UserEntity currentUser = getUserFromAuthentication(authentication);
         validateUserAccessByTenantAdmin(currentUser, id);
 
-        // Obtener los tenants que este admin gestiona
-        List<UserTenantRoleEntity> adminTenants = userTenantRoleRepository
-                .findByUserAndRole(currentUser, "TENANT_ADMIN");
-
         // Obtener el usuario a eliminar
         UserEntity targetUser = userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado"));
 
-        // Eliminar al usuario solo de los tenants que este admin gestiona
+        // Obtener los tenants del usuario a eliminar
         List<UserTenantRoleEntity> targetUserTenants = userTenantRoleRepository.findByUser(targetUser);
 
+        // Verificar si es SUPER_ADMIN
+        List<UserTenantRoleEntity> superAdminRoles = userTenantRoleRepository
+                .findByUserAndRole(currentUser, "SUPER_ADMIN");
+
         int tenantsRemoved = 0;
-        for (UserTenantRoleEntity adminTenant : adminTenants) {
-            Long managedTenantId = adminTenant.getTenant().getId();
 
-            // Verificar si el usuario pertenece a este tenant
-            boolean belongsToTenant = targetUserTenants.stream()
-                    .anyMatch(utr -> utr.getTenant().getId().equals(managedTenantId));
-
-            if (belongsToTenant) {
-                userService.removeUserFromTenant(id, managedTenantId);
+        if (!superAdminRoles.isEmpty()) {
+            // SUPER_ADMIN: eliminar de TODOS los tenants
+            for (UserTenantRoleEntity targetUserTenant : targetUserTenants) {
+                Long tenantId = targetUserTenant.getTenant().getId();
+                userService.removeUserFromTenant(id, tenantId);
                 tenantsRemoved++;
+            }
+        } else {
+            // TENANT_ADMIN: eliminar solo de los tenants que gestiona
+            List<UserTenantRoleEntity> adminTenants = userTenantRoleRepository
+                    .findByUserAndRole(currentUser, "TENANT_ADMIN");
+
+            List<Long> managedTenantIds = adminTenants.stream()
+                    .map(utr -> utr.getTenant().getId())
+                    .collect(Collectors.toList());
+
+            for (UserTenantRoleEntity targetUserTenant : targetUserTenants) {
+                Long tenantId = targetUserTenant.getTenant().getId();
+
+                if (managedTenantIds.contains(tenantId)) {
+                    userService.removeUserFromTenant(id, tenantId);
+                    tenantsRemoved++;
+                }
             }
         }
 
@@ -147,6 +161,15 @@ public class TenantAdminController {
     public ResponseEntity<List<TenantResponse>> getMyManagedTenants(Authentication authentication) {
         UserEntity currentUser = getUserFromAuthentication(authentication);
 
+        // Si es SUPER_ADMIN, devolver todos los tenants
+        List<UserTenantRoleEntity> superAdminRoles = userTenantRoleRepository
+                .findByUserAndRole(currentUser, "SUPER_ADMIN");
+        if (!superAdminRoles.isEmpty()) {
+            List<TenantResponse> allTenants = tenantService.getAllTenants();
+            return ResponseEntity.ok(allTenants);
+        }
+
+        // Si es TENANT_ADMIN, devolver solo los tenants asignados
         List<UserTenantRoleEntity> adminTenants = userTenantRoleRepository
                 .findByUserAndRole(currentUser, "TENANT_ADMIN");
 
@@ -192,6 +215,14 @@ public class TenantAdminController {
 
     @Transactional(readOnly = true)
     private void validateTenantAdminAccess(UserEntity adminUser, List<Long> tenantIds) {
+        // Si es SUPER_ADMIN, tiene acceso a todos los tenants
+        List<UserTenantRoleEntity> superAdminRoles = userTenantRoleRepository
+                .findByUserAndRole(adminUser, "SUPER_ADMIN");
+        if (!superAdminRoles.isEmpty()) {
+            return; // SUPER_ADMIN tiene acceso total
+        }
+
+        // Si no es SUPER_ADMIN, verificar que sea TENANT_ADMIN para los tenants solicitados
         List<UserTenantRoleEntity> adminTenants = userTenantRoleRepository
                 .findByUserAndRole(adminUser, "TENANT_ADMIN");
 
@@ -207,6 +238,14 @@ public class TenantAdminController {
     }
 
     private void validateUserAccessByTenantAdmin(UserEntity adminUser, Long userId) {
+        // Si es SUPER_ADMIN, tiene acceso a todos los usuarios
+        List<UserTenantRoleEntity> superAdminRoles = userTenantRoleRepository
+                .findByUserAndRole(adminUser, "SUPER_ADMIN");
+        if (!superAdminRoles.isEmpty()) {
+            return; // SUPER_ADMIN tiene acceso total
+        }
+
+        // Si no es SUPER_ADMIN, verificar que sea TENANT_ADMIN para al menos un tenant del usuario
         List<UserTenantRoleEntity> adminTenants = userTenantRoleRepository
                 .findByUserAndRole(adminUser, "TENANT_ADMIN");
 
