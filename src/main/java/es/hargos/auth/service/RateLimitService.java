@@ -16,7 +16,7 @@ import java.util.concurrent.TimeUnit;
  *
  * Estrategias por endpoint:
  * - Login: 5 intentos por minuto por IP
- * - Register: 3 intentos por hora por IP
+ * - Register: 30 intentos por 15 minutos por IP
  * - Forgot Password: 3 intentos por hora por IP + 5 por día por email
  * - Register with Invitation: 5 intentos por hora por IP
  * - Register with Access Code: 10 intentos por hora por IP
@@ -42,9 +42,9 @@ public class RateLimitService {
                 .maximumSize(100_000)
                 .build();
 
-        // Register: 3 intentos por hora por IP
+        // Register: 30 intentos por 15 minutos por IP
         this.registerBucketCache = Caffeine.newBuilder()
-                .expireAfterAccess(2, TimeUnit.HOURS)
+                .expireAfterAccess(30, TimeUnit.MINUTES)
                 .maximumSize(50_000)
                 .build();
 
@@ -90,7 +90,7 @@ public class RateLimitService {
 
     /**
      * Verifica si se puede permitir un intento de registro
-     * Límite: 3 intentos por hora por IP
+     * Límite: 30 intentos por 15 minutos por IP
      */
     public boolean allowRegisterAttempt(String ipAddress) {
         Bucket bucket = registerBucketCache.get(ipAddress, key -> createRegisterBucket());
@@ -174,10 +174,10 @@ public class RateLimitService {
     }
 
     /**
-     * Register: 3 intentos por hora
+     * Register: 30 intentos por 15 minutos
      */
     private Bucket createRegisterBucket() {
-        Bandwidth limit = Bandwidth.classic(3, Refill.intervally(3, Duration.ofHours(1)));
+        Bandwidth limit = Bandwidth.classic(30, Refill.intervally(30, Duration.ofMinutes(15)));
         return Bucket.builder().addLimit(limit).build();
     }
 
